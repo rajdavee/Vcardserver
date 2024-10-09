@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>vCard Preview</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      h1 {
+        text-align: center;
+      }
+      .field {
+        margin-bottom: 10px;
+      }
+      .field-name {
+        font-weight: bold;
+      }
+      .qr-code {
+        text-align: center;
+        margin-top: 20px;
+      }
+      .qr-code img {
+        max-width: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>vCard Preview</h1>
+    <% vCard.fields.forEach(field => { %>
+    <div class="field">
+      <span class="field-name"><%= field.name %>:</span>
+      <span class="field-value"><%= field.value %></span>
+    </div>
+    <% }); %>
+    <div class="qr-code">
+      <img src="<%= qrCodeDataUrl %>" alt="QR Code" />
+    </div>
+  </body>
+</html>
