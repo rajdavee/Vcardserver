@@ -12,7 +12,7 @@ const ejs = require('ejs');
 
 // Middleware
 app.use(cors({
-  origin: [process.env.FRONTEND_URL, 'http://localhost:3000'],
+  origin: [process.env.FRONTEND_URL, 'https://vcardclient-c7h4jk9j6-raj-24642cc0.vercel.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
