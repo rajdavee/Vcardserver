@@ -12,7 +12,7 @@ const ejs = require('ejs');
 
 
 app.use(cors({
-origin: ['https://vcardclient-qd0anahzk-raj-24642cc0.vercel.app'],
+origin: ['https://effervescent-chimera-8ae9ee.netlify.app/'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
