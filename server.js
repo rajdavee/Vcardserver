@@ -10,12 +10,12 @@ const app = express();
 const fileUpload = require('express-fileupload');
 const ejs = require('ejs');
 
-// Middleware
+const cors = require('cors');
+
 app.use(cors({
-  origin: [process.env.FRONTEND_URL, 'https://vcardclient-c7h4jk9j6-raj-24642cc0.vercel.app'],
-  credentials: true,
+  origin: 'https://vcardclient.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 
