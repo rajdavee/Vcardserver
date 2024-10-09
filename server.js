@@ -10,7 +10,6 @@ const app = express();
 const fileUpload = require('express-fileupload');
 const ejs = require('ejs');
 
-const cors = require('cors');
 
 app.use(cors({
   origin: 'https://vcardclient.vercel.app',
