@@ -12,7 +12,7 @@ const ejs = require('ejs');
 
 
 app.use(cors({
-origin: ['https://vcardserver.netlify.app'],
+origin: ['https://vcardclient.onrender.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
