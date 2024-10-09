@@ -12,7 +12,7 @@ const ejs = require('ejs');
 
 
 app.use(cors({
-  origin: 'https://vcardclient.vercel.app',
+  origin: 'https://vcardclient-gzxrsr1hn-raj-24642cc0.vercel.app/',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
