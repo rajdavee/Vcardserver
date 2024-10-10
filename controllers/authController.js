@@ -12,6 +12,7 @@
   const crypto = require('crypto');
   const VCardScan = require('../models/VCardScan');
   const geoip = require('geoip-lite');
+  const axios = require('axios');
 
 
 
@@ -93,7 +94,7 @@ function generateVCardString(vCardData) {
 
 async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
   try {
-    const scanUrl = `${process.env.BACKEND_URL}/api/auth/scan/${vCardId}`;
+    const scanUrl = `${process.env.FRONTEND_URL}/api/scan/${vCardId}`;
     const qrCodeDataUrl = await QRCode.toDataURL(scanUrl);
     user.vCards[vCardIndex].qrCode = qrCodeDataUrl;
     await user.save();
@@ -364,19 +365,25 @@ exports.handleQRScan = async (req, res) => {
     // Remove IPv6 prefix if present
     ipAddress = ipAddress.replace(/^::ffff:/, '');
 
-    // Perform IP geolocation
-    const geo = geoip.lookup(ipAddress);
-    
+    console.log('Handling QR scan for vCardId:', vCardId);
+    console.log('IP Address:', ipAddress);
+    console.log('User Agent:', userAgent);
+
+    // Fetch location data from ipapi.co
+    const locationResponse = await axios.get(`https://ipapi.co/${ipAddress}/json/`);
+    const locationData = locationResponse.data;
+    console.log('Location data:', locationData);
+
     const scanData = {
       vCardId,
       ipAddress,
       userAgent,
       scanDate: new Date(),
       location: {
-        latitude: geo ? geo.ll[0] : null,
-        longitude: geo ? geo.ll[1] : null,
-        city: geo ? geo.city : 'Unknown',
-        country: geo ? geo.country : 'Unknown'
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        city: locationData.city,
+        country: locationData.country_name
       }
     };
 
@@ -386,19 +393,24 @@ exports.handleQRScan = async (req, res) => {
     
     const existingScan = await VCardScan.findOne({
       vCardId,
-      ipAddress,
-      scanDate: { $gte: today }
+      'scans.ipAddress': ipAddress,
+      'scans.scanDate': { $gte: today }
     });
 
     if (!existingScan) {
-      const newScan = new VCardScan(scanData);
+      console.log('Creating new scan record');
+      const newScan = new VCardScan({ vCardId, scans: [scanData] });
       await newScan.save();
+      console.log('New scan saved:', newScan);
 
       // Update the user's vCard scan count
-      await User.findOneAndUpdate(
+      const updateResult = await User.findOneAndUpdate(
         { 'vCards._id': vCardId },
         { $push: { 'vCards.$.scans': newScan._id } }
       );
+      console.log('User update result:', updateResult);
+    } else {
+      console.log('Existing scan found, not creating a new record');
     }
 
     // Redirect to the vCard preview
