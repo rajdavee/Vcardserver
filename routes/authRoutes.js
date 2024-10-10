@@ -21,7 +21,7 @@ const {
   handleQRScan,
   getVCardScanAnalytics,
   getUserScanAnalytics,
-  getVCardAnalytics
+  getVCardAnalytics,
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -49,5 +49,6 @@ router.get('/scan/:vCardId', handleQRScan);
 router.get('/vcard-analytics/:vCardId', authenticateJWT, getVCardAnalytics);
 
 router.get('/user-analytics', authenticateJWT, getUserScanAnalytics);
+
 
 module.exports = router;

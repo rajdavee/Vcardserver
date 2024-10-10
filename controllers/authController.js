@@ -372,16 +372,11 @@ exports.handleQRScan = async (req, res) => {
       ipAddress,
       userAgent,
       scanDate: new Date(),
-      location: geo ? {
-        latitude: geo.ll[0],
-        longitude: geo.ll[1],
-        city: geo.city,
-        country: geo.country
-      } : {
-        latitude: null,
-        longitude: null,
-        city: 'Unknown',
-        country: 'Unknown'
+      location: {
+        latitude: geo ? geo.ll[0] : null,
+        longitude: geo ? geo.ll[1] : null,
+        city: geo ? geo.city : 'Unknown',
+        country: geo ? geo.country : 'Unknown'
       }
     };
 
