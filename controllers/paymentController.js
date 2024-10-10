@@ -24,7 +24,7 @@ exports.createCheckoutSession = async (req, res) => {
       client_reference_id: userId,
     });
 
-    res.json({ id: session.id });
+    res.json({ sessionId: session.id }); // Change 'id' to 'sessionId'
   } catch (error) {
     res.status(500).json({ error: error.message || 'Failed to create checkout session' });
   }
