@@ -608,27 +608,39 @@ exports.getVCardPreview = async (req, res) => {
 
 
 // Updated handleQRScan function (placeholder for future implementation)
+
+
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const { ip, userAgent } = req.body;
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
+    const userAgent = req.headers['user-agent'];
 
     console.log(`Handling scan for vCardId: ${vCardId}`);
     console.log('IP Address:', ip);
     console.log('User Agent:', userAgent);
 
-    const geo = geoip.lookup(ip);
+    // Fetch location data from ipapi.co
+    let location;
+    try {
+      const ipApiResponse = await axios.get(`https://ipapi.co/${ip}/json/`);
+      location = ipApiResponse.data;
+      console.log('Location data:', location);
+    } catch (error) {
+      console.error('Error fetching location data:', error);
+      location = null;
+    }
 
     const scanData = {
       ipAddress: ip,
       userAgent,
       scanDate: new Date(),
-      location: {
-        latitude: geo ? geo.ll[0] : null,
-        longitude: geo ? geo.ll[1] : null,
-        city: geo ? geo.city : null,
-        country: geo ? geo.country : null,
-      },
+      location: location ? {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        city: location.city,
+        country: location.country_name,
+      } : null,
     };
 
     let vCardScan = await VCardScan.findOne({ vCardId });
