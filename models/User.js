@@ -7,8 +7,7 @@ const vCardSchema = new mongoose.Schema({
     name: String,
     value: mongoose.Schema.Types.Mixed
   }],
-  qrCode: String,
-  scans: [{ type: mongoose.Schema.Types.ObjectId, ref: 'VCardScan' }]
+  qrCode: String
 }, { timestamps: true });
 
 const userSchema = new mongoose.Schema({

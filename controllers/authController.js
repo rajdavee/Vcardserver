@@ -372,30 +372,38 @@ exports.handleQRScan = async (req, res) => {
       ipAddress,
       userAgent,
       scanDate: new Date(),
-      location: {
-        latitude: geo ? geo.ll[0] : null,
-        longitude: geo ? geo.ll[1] : null,
-        city: geo ? geo.city : 'Unknown',
-        country: geo ? geo.country : 'Unknown'
+      location: geo ? {
+        latitude: geo.ll[0],
+        longitude: geo.ll[1],
+        city: geo.city,
+        country: geo.country
+      } : {
+        latitude: null,
+        longitude: null,
+        city: 'Unknown',
+        country: 'Unknown'
       }
     };
 
-    console.log('Scan data:', JSON.stringify(scanData, null, 2));
+    // Check if a scan from this IP for this vCard already exists today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const existingScan = await VCardScan.findOne({
+      vCardId,
+      ipAddress,
+      scanDate: { $gte: today }
+    });
 
-    const newScan = new VCardScan(scanData);
-    await newScan.save();
+    if (!existingScan) {
+      const newScan = new VCardScan(scanData);
+      await newScan.save();
 
-    console.log('Saved scan data:', JSON.stringify(newScan, null, 2));
-
-    // Find the user associated with the vCard and update their scan count
-    const user = await User.findOne({ 'vCards._id': vCardId });
-    if (user) {
-      const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
-      if (vCardIndex !== -1) {
-        user.vCards[vCardIndex].scans.push(newScan._id);
-        await user.save();
-        console.log('Updated user vCard scans:', user.vCards[vCardIndex].scans);
-      }
+      // Update the user's vCard scan count
+      await User.findOneAndUpdate(
+        { 'vCards._id': vCardId },
+        { $push: { 'vCards.$.scans': newScan._id } }
+      );
     }
 
     // Redirect to the vCard preview
@@ -456,6 +464,8 @@ exports.getVCardAnalytics = async (req, res) => {
   }
 };
 
+
+
 exports.getVCardScanAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -467,11 +477,16 @@ exports.getVCardScanAnalytics = async (req, res) => {
       return res.status(404).json({ error: 'vCard not found or does not belong to the user' });
     }
 
-    const scans = await VCardScan.find({ vCardId }).sort({ scanDate: -1 });
+    const vCardScan = await VCardScan.findOne({ vCardId });
+    if (!vCardScan) {
+      return res.json({ totalScans: 0, recentScans: [], locationBreakdown: {}, deviceBreakdown: {} });
+    }
+
+    const scans = vCardScan.scans;
 
     const analytics = {
       totalScans: scans.length,
-      recentScans: scans.slice(0, 10).map(scan => ({
+      recentScans: scans.slice(-10).reverse().map(scan => ({
         scanDate: scan.scanDate,
         location: {
           city: scan.location.city || 'Unknown',
@@ -487,7 +502,7 @@ exports.getVCardScanAnalytics = async (req, res) => {
       const country = scan.location.country || 'Unknown';
       analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
 
-      // Device breakdown (simplified, you might want to use a proper user-agent parser for better accuracy)
+      // Device breakdown
       const device = scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
       analytics.deviceBreakdown[device] = (analytics.deviceBreakdown[device] || 0) + 1;
     });
@@ -498,7 +513,6 @@ exports.getVCardScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard scan analytics' });
   }
 };
-
 exports.getUserScanAnalytics = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -509,26 +523,29 @@ exports.getUserScanAnalytics = async (req, res) => {
     }
 
     const vCardIds = user.vCards.map(vCard => vCard._id);
-    const scans = await VCardScan.find({ vCardId: { $in: vCardIds } }).sort({ scanDate: -1 });
+    const vCardScans = await VCardScan.find({ vCardId: { $in: vCardIds } });
 
     const analytics = {
-      totalScans: scans.length,
+      totalScans: 0,
       scansByVCard: {},
       overallLocationBreakdown: {},
       overallDeviceBreakdown: {}
     };
 
-    scans.forEach(scan => {
-      // Scans by vCard
-      analytics.scansByVCard[scan.vCardId] = (analytics.scansByVCard[scan.vCardId] || 0) + 1;
+    vCardScans.forEach(vCardScan => {
+      const scans = vCardScan.scans;
+      analytics.totalScans += scans.length;
+      analytics.scansByVCard[vCardScan.vCardId] = scans.length;
 
-      // Overall location breakdown
-      const country = scan.location.country || 'Unknown';
-      analytics.overallLocationBreakdown[country] = (analytics.overallLocationBreakdown[country] || 0) + 1;
+      scans.forEach(scan => {
+        // Overall location breakdown
+        const country = scan.location.country || 'Unknown';
+        analytics.overallLocationBreakdown[country] = (analytics.overallLocationBreakdown[country] || 0) + 1;
 
-      // Overall device breakdown
-      const device = scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
-      analytics.overallDeviceBreakdown[device] = (analytics.overallDeviceBreakdown[device] || 0) + 1;
+        // Overall device breakdown
+        const device = scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
+        analytics.overallDeviceBreakdown[device] = (analytics.overallDeviceBreakdown[device] || 0) + 1;
+      });
     });
 
     res.json(analytics);
@@ -537,7 +554,6 @@ exports.getUserScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user scan analytics' });
   }
 };
-
 
 
 

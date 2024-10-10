@@ -1,15 +1,6 @@
 const mongoose = require('mongoose');
 
-const vCardScanSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false  // Changed to false
-  },
-  vCardId: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: true
-  },
+const scanSchema = new mongoose.Schema({
   ipAddress: String,
   userAgent: String,
   scanDate: {
@@ -22,6 +13,15 @@ const vCardScanSchema = new mongoose.Schema({
     city: String,
     country: String
   }
+});
+
+const vCardScanSchema = new mongoose.Schema({
+  vCardId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User.vCards'
+  },
+  scans: [scanSchema]
 });
 
 module.exports = mongoose.model('VCardScan', vCardScanSchema);
