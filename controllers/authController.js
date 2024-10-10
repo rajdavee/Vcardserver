@@ -495,25 +495,24 @@ exports.getVCardPreview = async (req, res) => {
     }
 
     // Fetch location data from ipapi.co
-    let location;
-    try {
-      const ipApiResponse = await axios.get(`https://ipapi.co/${ip}/json/`);
-      location = ipApiResponse.data;
-      console.log('Location data:', location);
-    } catch (error) {
-      console.error('Error fetching location data:', error);
-      location = null;
-    }
-
+ let location;
+try {
+  const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+  location = ipApiResponse.data;
+  console.log('Location data:', location);
+} catch (error) {
+  console.error('Error fetching location data:', error);
+  location = null;
+}
     const scanData = {
       ipAddress: ip,
       userAgent,
       scanDate: new Date(),
-      location: location ? {
-        latitude: location.latitude,
-        longitude: location.longitude,
+      location: location && location.status === 'success' ? {
+        latitude: location.lat,
+        longitude: location.lon,
         city: location.city,
-        country: location.country_name,
+        country: location.country,
       } : null,
     };
 
@@ -609,10 +608,12 @@ exports.getVCardPreview = async (req, res) => {
 
 // Updated handleQRScan function (placeholder for future implementation)
 
+
+
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
 
     console.log(`Handling scan for vCardId: ${vCardId}`);
