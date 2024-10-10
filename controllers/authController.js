@@ -472,6 +472,7 @@ exports.getPublicVCardPreview = async (req, res) => {
 };
 
 
+
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -485,48 +486,86 @@ exports.getVCardPreview = async (req, res) => {
     const user = await User.findOne({ 'vCards._id': vCardId });
 
     if (!user) {
+      console.log(`vCard not found for id: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found' });
     }
 
     const vCard = user.vCards.id(vCardId);
 
     if (!vCard) {
+      console.log(`vCard not found in user document for id: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found in user document' });
     }
 
-    // Fetch location data from ipapi.co
- let location;
-try {
-  const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-  location = ipApiResponse.data;
-  console.log('Location data:', location);
-} catch (error) {
-  console.error('Error fetching location data:', error);
-  location = null;
-}
-    const scanData = {
-      ipAddress: ip,
-      userAgent,
-      scanDate: new Date(),
-      location: location && location.status === 'success' ? {
-        latitude: location.lat,
-        longitude: location.lon,
-        city: location.city,
-        country: location.country,
-      } : null,
-    };
-
+    // Check if a scan from this IP for this vCard already exists within the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     let vCardScan = await VCardScan.findOne({ vCardId });
 
-    if (!vCardScan) {
-      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+    if (vCardScan) {
+      const existingScan = vCardScan.scans.find(scan => 
+        scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
+      );
+
+      if (existingScan) {
+        console.log('Recent scan found, updating existing record');
+        existingScan.scanDate = new Date();
+        await vCardScan.save();
+      } else {
+        console.log('Creating new scan record');
+        let location;
+        try {
+          const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+          location = ipApiResponse.data;
+          console.log('Location data:', location);
+        } catch (error) {
+          console.error('Error fetching location data:', error);
+          location = null;
+        }
+
+        const scanData = {
+          ipAddress: ip,
+          userAgent,
+          scanDate: new Date(),
+          location: location && location.status === 'success' ? {
+            latitude: location.lat,
+            longitude: location.lon,
+            city: location.city,
+            country: location.country,
+          } : null,
+        };
+
+        vCardScan.scans.push(scanData);
+        await vCardScan.save();
+      }
     } else {
-      vCardScan.scans.push(scanData);
+      console.log('Creating new VCardScan document');
+      let location;
+      try {
+        const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+        location = ipApiResponse.data;
+        console.log('Location data:', location);
+      } catch (error) {
+        console.error('Error fetching location data:', error);
+        location = null;
+      }
+
+      const scanData = {
+        ipAddress: ip,
+        userAgent,
+        scanDate: new Date(),
+        location: location && location.status === 'success' ? {
+          latitude: location.lat,
+          longitude: location.lon,
+          city: location.city,
+          country: location.country,
+        } : null,
+      };
+
+      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+      await vCardScan.save();
     }
 
-    await vCardScan.save();
-
-    console.log('Preview scan recorded successfully');
+    console.log('Preview scan recorded or updated successfully');
 
     res.json({
       templateId: vCard.templateId,
@@ -538,7 +577,6 @@ try {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
-
 
 // exports.handleQRScan = async (req, res) => {
 //   try {
@@ -613,63 +651,58 @@ try {
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
     const userAgent = req.headers['user-agent'];
 
     console.log(`Handling scan for vCardId: ${vCardId}`);
     console.log('IP Address:', ip);
     console.log('User Agent:', userAgent);
 
-    // Fetch location data from ip-api.com
-    const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-    const location = ipApiResponse.data;
+    let vCardScan = await VCardScan.findOne({ vCardId });
 
-    console.log('Full ip-api.com response:', JSON.stringify(location, null, 2));
+    if (!vCardScan) {
+      vCardScan = new VCardScan({ vCardId, scans: [] });
+    }
 
-    let scanData;
+    // Check if a scan from this IP exists within the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const existingScan = vCardScan.scans.find(scan => 
+      scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
+    );
 
-    if (location.status === 'success') {
-      scanData = {
+    if (!existingScan) {
+      console.log('Creating new scan record');
+      const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+      const location = ipApiResponse.data;
+
+      const scanData = {
         ipAddress: ip,
         userAgent,
         scanDate: new Date(),
-        location: {
+        location: location.status === 'success' ? {
           latitude: location.lat,
           longitude: location.lon,
           city: location.city,
           country: location.country,
-        },
+        } : null,
       };
-    } else {
-      scanData = {
-        ipAddress: ip,
-        userAgent,
-        scanDate: new Date(),
-        location: null,
-      };
-    }
 
-    let vCardScan = await VCardScan.findOne({ vCardId });
-
-    if (!vCardScan) {
-      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
-    } else {
       vCardScan.scans.push(scanData);
+      await vCardScan.save();
+
+      console.log('New scan recorded successfully');
+      res.status(200).json({ success: true, message: 'New scan recorded successfully' });
+    } else {
+      console.log('Recent scan found, not creating a new record');
+      res.status(200).json({ success: true, message: 'Recent scan exists, no new record created' });
     }
-
-    await vCardScan.save();
-
-    console.log('Scan recorded successfully');
-    res.status(200).json({
-      success: true,
-      message: 'Scan recorded successfully',
-      data: scanData
-    });
   } catch (error) {
     console.error('Error handling scan:', error);
     res.status(500).json({ success: false, error: 'Error handling scan' });
   }
 };
+
+
 
 
 exports.handleQRScan = async (req, res) => {
@@ -822,8 +855,47 @@ exports.getUserScanAnalytics = async (req, res) => {
 };
 
 
+exports.recordTimeSpent = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const { timeSpent } = req.body;
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
 
+    console.log(`Recording time spent for vCardId: ${vCardId}`);
+    console.log('Time spent:', timeSpent);
+    console.log('IP Address:', ip);
 
+    let vCardScan = await VCardScan.findOne({ vCardId });
+
+    if (!vCardScan) {
+      console.log(`No VCardScan found for vCardId: ${vCardId}`);
+      return res.status(404).json({ error: 'VCard scan record not found' });
+    }
+
+    // Find the most recent scan for this IP within the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const lastScan = vCardScan.scans.find(scan => 
+      scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
+    );
+    
+    if (lastScan) {
+      // Convert timeSpent from seconds to minutes and round to 2 decimal places
+      const timeSpentMinutes = Math.round((timeSpent / 60) * 100) / 100;
+      // Update the timeSpent field
+      lastScan.timeSpent = timeSpentMinutes;
+      await vCardScan.save();
+
+      console.log(`Time spent recorded for vCard ${vCardId}: ${lastScan.timeSpent} minutes`);
+      res.status(200).json({ message: 'Time spent recorded successfully' });
+    } else {
+      console.log(`No recent scan found for vCardId: ${vCardId} and IP: ${ip}`);
+      res.status(404).json({ error: 'No recent scan found for this vCard and IP' });
+    }
+  } catch (error) {
+    console.error('Error recording time spent:', error);
+    res.status(500).json({ error: 'Error recording time spent', details: error.message });
+  }
+};
 
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------

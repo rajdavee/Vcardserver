@@ -12,7 +12,8 @@ const scanSchema = new mongoose.Schema({
     longitude: Number,
     city: String,
     country: String
-  }
+  },
+  timeSpent: Number // Add this line to track time spent
 });
 
 const vCardScanSchema = new mongoose.Schema({
