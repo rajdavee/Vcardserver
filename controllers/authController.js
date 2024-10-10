@@ -319,8 +319,6 @@ exports.getPublicVCard = async (req, res) => {
 
 // Updated createVCard function
 
-
-
 exports.createVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -382,7 +380,7 @@ exports.createVCard = async (req, res) => {
 
     const vCardId = user.vCards[user.vCards.length - 1]._id;
     const vCardString = generateVCardString(newVCard);
-    const previewLink = `${process.env.FRONTEND_URL}/preview/${vCardId}`;
+    const previewLink = `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`;
     const qrCodeDataUrl = await generateQRCode(vCardId);
 
     // Update the vCard with the QR code
