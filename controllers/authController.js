@@ -44,6 +44,11 @@ async function generateQRCode(vCardId) {
 function generateVCardString(vCardData) {
   const vCard = vCardsJS();
 
+  if (!vCardData || !Array.isArray(vCardData.fields)) {
+    console.error('Invalid vCardData:', vCardData);
+    throw new Error('Invalid vCard data structure');
+  }
+
   // Map the fields from vCardData to the vCard object
   vCardData.fields.forEach(field => {
     switch (field.name) {
@@ -314,10 +319,39 @@ exports.getPublicVCard = async (req, res) => {
 
 // Updated createVCard function
 
+
+
 exports.createVCard = async (req, res) => {
   try {
     const { userId } = req.user;
-    const { templateId, fields } = req.body;
+    let templateId, fields;
+
+    console.log('Request body:', req.body);
+    console.log('Request files:', req.files);
+
+    // Check if data is sent as JSON or form-data
+    if (req.is('application/json')) {
+      ({ templateId, fields } = req.body);
+    } else if (req.body.data) {
+      try {
+        const parsedData = JSON.parse(req.body.data);
+        templateId = parsedData.templateId;
+        fields = parsedData.fields;
+      } catch (error) {
+        console.error('Error parsing JSON data:', error);
+        return res.status(400).json({ error: 'Invalid JSON data in form-data' });
+      }
+    } else {
+      console.error('No valid data found in request');
+      return res.status(400).json({ error: 'No valid data found in request' });
+    }
+
+    console.log('Parsed data:', { templateId, fields });
+
+    if (!Array.isArray(fields)) {
+      console.error('Fields is not an array:', fields);
+      return res.status(400).json({ error: 'Fields must be an array' });
+    }
 
     const user = await User.findById(userId);
     if (!user) {
@@ -325,6 +359,24 @@ exports.createVCard = async (req, res) => {
     }
 
     const newVCard = { templateId, fields };
+
+    // Handle file upload if present
+    if (req.files && req.files.profileImage) {
+      const file = req.files.profileImage;
+      const fileName = `${Date.now()}-${file.name}`;
+      const uploadPath = path.join(__dirname, '..', 'public', 'uploads', fileName);
+      await file.mv(uploadPath);
+      console.log('File uploaded:', uploadPath);
+
+      // Add or update profileImage field
+      const profileImageIndex = fields.findIndex(field => field.name === 'profileImage');
+      if (profileImageIndex !== -1) {
+        fields[profileImageIndex].value = `/uploads/${fileName}`;
+      } else {
+        fields.push({ name: 'profileImage', value: `/uploads/${fileName}` });
+      }
+    }
+
     user.vCards.push(newVCard);
     await user.save();
 
