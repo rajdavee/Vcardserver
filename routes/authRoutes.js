@@ -23,7 +23,8 @@ const {
   getUserScanAnalytics,
   getVCardAnalytics,
   getVCardPreview,
-  handleScan
+  handleScan,
+  testGeolocation
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -54,5 +55,8 @@ router.get('/user-analytics', authenticateJWT, getUserScanAnalytics);
 router.get('/vcard-preview/:vCardId', getVCardPreview);
 
 router.post('/scan/:vCardId', handleScan);
+
+
+router.get('/test-geolocation', testGeolocation);
 
 module.exports = router;

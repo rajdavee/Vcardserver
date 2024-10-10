@@ -609,7 +609,6 @@ exports.getVCardPreview = async (req, res) => {
 
 // Updated handleQRScan function (placeholder for future implementation)
 
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -620,28 +619,34 @@ exports.handleScan = async (req, res) => {
     console.log('IP Address:', ip);
     console.log('User Agent:', userAgent);
 
-    // Fetch location data from ipapi.co
-    let location;
-    try {
-      const ipApiResponse = await axios.get(`https://ipapi.co/${ip}/json/`);
-      location = ipApiResponse.data;
-      console.log('Location data:', location);
-    } catch (error) {
-      console.error('Error fetching location data:', error);
-      location = null;
-    }
+    // Fetch location data from ip-api.com
+    const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+    const location = ipApiResponse.data;
 
-    const scanData = {
-      ipAddress: ip,
-      userAgent,
-      scanDate: new Date(),
-      location: location ? {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        city: location.city,
-        country: location.country_name,
-      } : null,
-    };
+    console.log('Full ip-api.com response:', JSON.stringify(location, null, 2));
+
+    let scanData;
+
+    if (location.status === 'success') {
+      scanData = {
+        ipAddress: ip,
+        userAgent,
+        scanDate: new Date(),
+        location: {
+          latitude: location.lat,
+          longitude: location.lon,
+          city: location.city,
+          country: location.country,
+        },
+      };
+    } else {
+      scanData = {
+        ipAddress: ip,
+        userAgent,
+        scanDate: new Date(),
+        location: null,
+      };
+    }
 
     let vCardScan = await VCardScan.findOne({ vCardId });
 
@@ -654,7 +659,11 @@ exports.handleScan = async (req, res) => {
     await vCardScan.save();
 
     console.log('Scan recorded successfully');
-    res.status(200).json({ success: true, message: 'Scan recorded successfully' });
+    res.status(200).json({
+      success: true,
+      message: 'Scan recorded successfully',
+      data: scanData
+    });
   } catch (error) {
     console.error('Error handling scan:', error);
     res.status(500).json({ success: false, error: 'Error handling scan' });
@@ -1081,6 +1090,42 @@ exports.resendVerification = async (req, res) => {
 
 
 
+
+
+exports.testGeolocation = async (req, res) => {
+  try {
+    const testIp = req.query.ip || '8.8.8.8'; // Use Google's public DNS as a default test IP
+    console.log(`Testing geolocation for IP: ${testIp}`);
+
+    const ipApiResponse = await axios.get(`http://ip-api.com/json/${testIp}`);
+    const location = ipApiResponse.data;
+
+    console.log('Full ip-api.com response:', JSON.stringify(location, null, 2));
+
+    if (location.status === 'success') {
+      res.json({
+        success: true,
+        message: 'Geolocation data retrieved successfully',
+        data: {
+          ip: testIp,
+          city: location.city,
+          country: location.country,
+          latitude: location.lat,
+          longitude: location.lon,
+        }
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'Failed to retrieve geolocation data',
+        data: location
+      });
+    }
+  } catch (error) {
+    console.error('Error testing geolocation:', error);
+    res.status(500).json({ success: false, error: 'Error testing geolocation' });
+  }
+};
 
 
 
