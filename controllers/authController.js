@@ -475,7 +475,7 @@ exports.getPublicVCardPreview = async (req, res) => {
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
     const userAgent = req.headers['user-agent'];
 
     console.log(`Handling preview for vCardId: ${vCardId}`);
@@ -494,18 +494,27 @@ exports.getVCardPreview = async (req, res) => {
       return res.status(404).json({ error: 'vCard not found in user document' });
     }
 
-    // Record the scan
-    const geo = geoip.lookup(ip);
+    // Fetch location data from ipapi.co
+    let location;
+    try {
+      const ipApiResponse = await axios.get(`https://ipapi.co/${ip}/json/`);
+      location = ipApiResponse.data;
+      console.log('Location data:', location);
+    } catch (error) {
+      console.error('Error fetching location data:', error);
+      location = null;
+    }
+
     const scanData = {
       ipAddress: ip,
       userAgent,
       scanDate: new Date(),
-      location: {
-        latitude: geo ? geo.ll[0] : null,
-        longitude: geo ? geo.ll[1] : null,
-        city: geo ? geo.city : null,
-        country: geo ? geo.country : null,
-      },
+      location: location ? {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        city: location.city,
+        country: location.country_name,
+      } : null,
     };
 
     let vCardScan = await VCardScan.findOne({ vCardId });
@@ -530,7 +539,6 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
-
 
 
 // exports.handleQRScan = async (req, res) => {
