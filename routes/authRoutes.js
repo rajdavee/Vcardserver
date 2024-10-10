@@ -22,7 +22,8 @@ const {
   getVCardScanAnalytics,
   getUserScanAnalytics,
   getVCardAnalytics,
-  getVCardPreview
+  getVCardPreview,
+  handleScan
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -45,12 +46,13 @@ router.get('/verify-email/:token', verifyEmail);
 router.post('/resend-verification', resendVerification);
 
 router.get('/verification-status', authenticateJWT, checkVerificationStatus);
-router.get('/scan/:vCardId', handleQRScan);
 
 router.get('/vcard-analytics/:vCardId', authenticateJWT, getVCardAnalytics);
 
 router.get('/user-analytics', authenticateJWT, getUserScanAnalytics);
 
 router.get('/vcard-preview/:vCardId', getVCardPreview);
+
+router.post('/scan/:vCardId', handleScan);
 
 module.exports = router;

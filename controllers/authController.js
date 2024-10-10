@@ -29,10 +29,9 @@
 
 
 
-// New helper function to generate QR code
 async function generateQRCode(vCardId) {
   try {
-    const qrCodeUrl = `${process.env.FRONTEND_URL}/scan/${vCardId}`;
+    const qrCodeUrl = `${process.env.FRONTEND_URL}/api/scan/${vCardId}`;
     const qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl);
     return qrCodeDataUrl;
   } catch (error) {
@@ -472,9 +471,17 @@ exports.getPublicVCardPreview = async (req, res) => {
   }
 };
 
+
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    console.log(`Handling preview for vCardId: ${vCardId}`);
+    console.log('IP Address:', ip);
+    console.log('User Agent:', userAgent);
+
     const user = await User.findOne({ 'vCards._id': vCardId });
 
     if (!user) {
@@ -486,6 +493,32 @@ exports.getVCardPreview = async (req, res) => {
     if (!vCard) {
       return res.status(404).json({ error: 'vCard not found in user document' });
     }
+
+    // Record the scan
+    const geo = geoip.lookup(ip);
+    const scanData = {
+      ipAddress: ip,
+      userAgent,
+      scanDate: new Date(),
+      location: {
+        latitude: geo ? geo.ll[0] : null,
+        longitude: geo ? geo.ll[1] : null,
+        city: geo ? geo.city : null,
+        country: geo ? geo.country : null,
+      },
+    };
+
+    let vCardScan = await VCardScan.findOne({ vCardId });
+
+    if (!vCardScan) {
+      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+    } else {
+      vCardScan.scans.push(scanData);
+    }
+
+    await vCardScan.save();
+
+    console.log('Preview scan recorded successfully');
 
     res.json({
       templateId: vCard.templateId,
@@ -567,8 +600,46 @@ exports.getVCardPreview = async (req, res) => {
 
 
 // Updated handleQRScan function (placeholder for future implementation)
+exports.handleScan = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const { ip, userAgent } = req.body;
 
+    console.log(`Handling scan for vCardId: ${vCardId}`);
+    console.log('IP Address:', ip);
+    console.log('User Agent:', userAgent);
 
+    const geo = geoip.lookup(ip);
+
+    const scanData = {
+      ipAddress: ip,
+      userAgent,
+      scanDate: new Date(),
+      location: {
+        latitude: geo ? geo.ll[0] : null,
+        longitude: geo ? geo.ll[1] : null,
+        city: geo ? geo.city : null,
+        country: geo ? geo.country : null,
+      },
+    };
+
+    let vCardScan = await VCardScan.findOne({ vCardId });
+
+    if (!vCardScan) {
+      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+    } else {
+      vCardScan.scans.push(scanData);
+    }
+
+    await vCardScan.save();
+
+    console.log('Scan recorded successfully');
+    res.status(200).json({ success: true, message: 'Scan recorded successfully' });
+  } catch (error) {
+    console.error('Error handling scan:', error);
+    res.status(500).json({ success: false, error: 'Error handling scan' });
+  }
+};
 
 
 exports.handleQRScan = async (req, res) => {
