@@ -7,7 +7,7 @@ const vCardSchema = new mongoose.Schema({
     name: String,
     value: mongoose.Schema.Types.Mixed
   }],
-  qrCode: String
+  qrCode: String, // Keep the qrCode field
 }, { timestamps: true });
 
 const userSchema = new mongoose.Schema({

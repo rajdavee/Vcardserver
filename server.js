@@ -12,7 +12,7 @@ const ejs = require('ejs');
 
 
 app.use(cors({
-origin: ['https://vcardclient.onrender.com'],
+origin: ['https://vcardclient.onrender.com','http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
