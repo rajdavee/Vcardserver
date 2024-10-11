@@ -1,18 +1,18 @@
   const User = require('../models/User');
   const jwt = require('jsonwebtoken');
   const sendEmail = require('../utils/sendEmail');
-
+  const vCardsJS = require('vcards-js');
   const multer = require('multer');
   const fs = require('fs-extra');
   const QRCode = require('qrcode');
   const vCard = require('vcf');
   const ejs = require('ejs');
   const path = require('path');
-  const vCardsJS = require('vcards-js');
   const crypto = require('crypto');
   const VCardScan = require('../models/VCardScan');
   const geoip = require('geoip-lite');
   const axios = require('axios');
+  const mongoose = require('mongoose');
 
 
 
@@ -28,77 +28,6 @@
 // -----------------------------------------------------------------------------------
 
 
-
-async function generateQRCode(vCardId) {
-  try {
-    const qrCodeUrl = `${process.env.FRONTEND_URL}/api/scan/${vCardId}`;
-    const qrCodeDataUrl = await QRCode.toDataURL(qrCodeUrl);
-    return qrCodeDataUrl;
-  } catch (error) {
-    console.error('Error generating QR code:', error);
-    throw error;
-  }
-}
-
-function generateVCardString(vCardData) {
-  const vCard = vCardsJS();
-
-  if (!vCardData || !Array.isArray(vCardData.fields)) {
-    console.error('Invalid vCardData:', vCardData);
-    throw new Error('Invalid vCard data structure');
-  }
-
-  // Map the fields from vCardData to the vCard object
-  vCardData.fields.forEach(field => {
-    switch (field.name) {
-      case 'name':
-        const nameParts = field.value.split(' ');
-        vCard.firstName = nameParts[0];
-        vCard.lastName = nameParts.slice(1).join(' ');
-        break;
-      case 'firstName':
-        vCard.firstName = field.value;
-        break;
-      case 'lastName':
-        vCard.lastName = field.value;
-        break;
-      case 'jobTitle':
-        vCard.title = field.value;
-        break;
-      case 'phone':
-        vCard.workPhone = field.value;
-        break;
-      case 'email':
-        vCard.email = field.value;
-        break;
-      case 'website':
-        vCard.url = field.value;
-        break;
-      case 'address':
-        vCard.workAddress.street = field.value;
-        break;
-      case 'city':
-        vCard.workAddress.city = field.value;
-        break;
-      case 'postalCode':
-        vCard.workAddress.postalCode = field.value;
-        break;
-      case 'workHours':
-        vCard.note = `Work Hours: ${field.value}`;
-        break;
-      case 'alternatePhone':
-        vCard.cellPhone = field.value;
-        break;
-      case 'profileImage':
-        if (field.value) {
-          vCard.photo.attachFromUrl(field.value);
-        }
-        break;
-    }
-  });
-
-  return vCard.getFormattedString();
-}
 
 
 
@@ -133,40 +62,52 @@ async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
 
 
 
-exports.updateVCard = async (req, res) => {
-  try {
-    const { userId } = req.user;
-    const { vCardId } = req.params;
-    const { templateId, fields } = req.body;
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
 
-    const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
-    if (vCardIndex === -1) {
-      return res.status(404).json({ error: 'vCard not found' });
-    }
 
-    user.vCards[vCardIndex].templateId = templateId;
-    user.vCards[vCardIndex].fields = fields;
 
-    const vCardString = generateVCardString(user.vCards[vCardIndex]);
-    const qrCodeDataUrl = await generateAndSaveQRCode(vCardId, user, vCardIndex);
 
-    await user.save();
 
-    res.json({ 
-      message: 'vCard updated successfully',
-      vCardString,
-      qrCodeDataUrl
-    });
-  } catch (error) {
-    console.error('Error updating vCard:', error);
-    res.status(500).json({ error: 'Error updating vCard', details: error.message });
-  }
-};
+
+
+
+// exports.updateVCard = async (req, res) => {
+//   try {
+//     const { userId } = req.user;
+//     const { vCardId } = req.params;
+//     const { templateId, fields } = req.body;
+
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
+//     if (vCardIndex === -1) {
+//       return res.status(404).json({ error: 'vCard not found' });
+//     }
+
+//     user.vCards[vCardIndex].templateId = templateId;
+//     user.vCards[vCardIndex].fields = fields;
+
+//     const vCardString = generateVCardString(user.vCards[vCardIndex]);
+//     const qrCodeDataUrl = await generateAndSaveQRCode(vCardId, user, vCardIndex);
+
+//     await user.save();
+
+//     res.json({ 
+//       message: 'vCard updated successfully',
+//       vCardString,
+//       qrCodeDataUrl
+//     });
+//   } catch (error) {
+//     console.error('Error updating vCard:', error);
+//     res.status(500).json({ error: 'Error updating vCard', details: error.message });
+//   }
+// };
+
+
+
 
 exports.getVCards = async (req, res) => {
   try {
@@ -244,29 +185,192 @@ exports.getPublicVCard = async (req, res) => {
   }
 };
 
+
+
+function generateVCardString(vCardData) {
+  let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
+  const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
+
+  // Name
+  const fullName = fieldMap.get('name') || `${fieldMap.get('firstName') || ''} ${fieldMap.get('lastName') || ''}`.trim();
+  vCard += `FN:${fullName}\n`;
+  vCard += `N:${fullName.split(' ').reverse().join(';')};;;\n`;
+
+  if (fieldMap.has('phone')) vCard += `TEL;TYPE=CELL:${fieldMap.get('phone')}\n`;
+  if (fieldMap.has('email')) vCard += `EMAIL:${fieldMap.get('email')}\n`;
+  if (fieldMap.has('website')) vCard += `URL:${fieldMap.get('website')}\n`;
+  if (fieldMap.has('jobTitle')) vCard += `TITLE:${fieldMap.get('jobTitle')}\n`;
+  if (fieldMap.has('company')) vCard += `ORG:${fieldMap.get('company')}\n`;
+
+  const address = [fieldMap.get('address'), fieldMap.get('city'), fieldMap.get('postalCode')].filter(Boolean).join(', ');
+  if (address) vCard += `ADR:;;${address};;;;\n`;
+
+  vCard += `END:VCARD`;
+  return vCard;
+}
+
+async function generateQRCode(vCardData) {
+  const vCardString = generateVCardString(vCardData);
+  const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
+  return { qrCodeDataUrl, vCardString };
+}
+
+exports.createVCard = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { templateId, fields } = JSON.parse(req.body.data);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const newVCard = {
+      templateId,
+      fields
+    };
+
+    // Handle file upload if present
+    if (req.files && req.files.profileImage) {
+      const file = req.files.profileImage;
+      const fileName = `${Date.now()}_${file.name}`;
+      await file.mv(path.join(__dirname, '..', 'uploads', fileName));
+      newVCard.fields.push({ name: 'profileImage', value: `/uploads/${fileName}` });
+    }
+
+    const { qrCodeDataUrl, vCardString } = await generateQRCode(newVCard);
+    
+    const vCardId = new mongoose.Types.ObjectId();
+    user.vCards.push({
+      _id: vCardId,
+      ...newVCard,
+      qrCode: qrCodeDataUrl,
+      vCardString: vCardString
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      message: 'vCard created successfully',
+      vCardId: vCardId.toString(),
+      qrCodeDataUrl: qrCodeDataUrl,
+      vCardString: vCardString,
+      previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId.toString()}`
+    });
+  } catch (error) {
+    console.error('Error creating vCard:', error);
+    res.status(500).json({ error: 'Error creating vCard', details: error.message });
+  }
+};
+
+exports.updateVCard = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { vCardId } = req.params;
+    let { templateId, fields } = JSON.parse(req.body.data);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
+    if (vCardIndex === -1) {
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    // Handle file upload if present
+    if (req.files && req.files.profileImage) {
+      const file = req.files.profileImage;
+      const fileName = `${Date.now()}_${file.name}`;
+      await file.mv(path.join(__dirname, '..', 'uploads', fileName));
+      fields = fields.filter(field => field.name !== 'profileImage');
+      fields.push({ name: 'profileImage', value: `/uploads/${fileName}` });
+    }
+
+    user.vCards[vCardIndex].templateId = templateId;
+    user.vCards[vCardIndex].fields = fields;
+
+    const { qrCodeDataUrl, vCardString } = await generateQRCode(user.vCards[vCardIndex]);
+    user.vCards[vCardIndex].qrCode = qrCodeDataUrl;
+    user.vCards[vCardIndex].vCardString = vCardString;
+
+    await user.save();
+
+    res.json({
+      message: 'vCard updated successfully',
+      qrCodeDataUrl: qrCodeDataUrl,
+      vCardString: vCardString,
+      previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`
+    });
+  } catch (error) {
+    console.error('Error updating vCard:', error);
+    res.status(500).json({ error: 'Error updating vCard', details: error.message });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // exports.createVCard = async (req, res) => {
 //   try {
-//     console.log('CreateVCard function called');
+//     const { userId } = req.user;
+//     let templateId, fields;
+
 //     console.log('Request body:', req.body);
 //     console.log('Request files:', req.files);
 
-//     const userId = req.user.userId;
-//     let templateId, fields;
-
-//     if (req.body.data) {
+//     // Check if data is sent as JSON or form-data
+//     if (req.is('application/json')) {
+//       ({ templateId, fields } = req.body);
+//     } else if (req.body.data) {
 //       try {
-//         ({ templateId, fields } = JSON.parse(req.body.data));
-//         console.log('Parsed data:', { templateId, fields });
+//         const parsedData = JSON.parse(req.body.data);
+//         templateId = parsedData.templateId;
+//         fields = parsedData.fields;
 //       } catch (error) {
 //         console.error('Error parsing JSON data:', error);
-//         return res.status(400).json({ error: 'Invalid JSON data' });
+//         return res.status(400).json({ error: 'Invalid JSON data in form-data' });
 //       }
 //     } else {
-//       console.log('No data field found in request body');
-//       return res.status(400).json({ error: 'Missing data field' });
+//       console.error('No valid data found in request');
+//       return res.status(400).json({ error: 'No valid data found in request' });
 //     }
 
-//     // Handle file upload
+//     console.log('Parsed data:', { templateId, fields });
+
+//     if (!Array.isArray(fields)) {
+//       console.error('Fields is not an array:', fields);
+//       return res.status(400).json({ error: 'Fields must be an array' });
+//     }
+
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     const newVCard = { templateId, fields };
+
+//     // Handle file upload if present
 //     if (req.files && req.files.profileImage) {
 //       const file = req.files.profileImage;
 //       const fileName = `${Date.now()}-${file.name}`;
@@ -274,33 +378,32 @@ exports.getPublicVCard = async (req, res) => {
 //       await file.mv(uploadPath);
 //       console.log('File uploaded:', uploadPath);
 
-//       // Update the profileImage field with the file path
-//       const profileImageField = fields.find(field => field.name === 'profileImage');
-//       if (profileImageField) {
-//         profileImageField.value = `/uploads/${fileName}`;
+//       // Add or update profileImage field
+//       const profileImageIndex = fields.findIndex(field => field.name === 'profileImage');
+//       if (profileImageIndex !== -1) {
+//         fields[profileImageIndex].value = `/uploads/${fileName}`;
 //       } else {
 //         fields.push({ name: 'profileImage', value: `/uploads/${fileName}` });
 //       }
 //     }
 
-//     // Find the user and update their vCards
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-
-//     const newVCard = { templateId, fields };
 //     user.vCards.push(newVCard);
 //     await user.save();
 
 //     const vCardId = user.vCards[user.vCards.length - 1]._id;
 //     const vCardString = generateVCardString(newVCard);
-//     const qrCodeDataUrl = await generateAndSaveQRCode(vCardId, user, user.vCards.length - 1);
+//     const previewLink = `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`;
+//     const qrCodeDataUrl = await generateQRCode(vCardId);
+
+//     // Update the vCard with the QR code
+//     user.vCards[user.vCards.length - 1].qrCode = qrCodeDataUrl;
+//     await user.save();
 
 //     res.status(201).json({ 
 //       message: 'vCard created successfully', 
 //       vCardId: vCardId,
 //       vCardString: vCardString,
+//       previewLink: previewLink,
 //       qrCodeDataUrl: qrCodeDataUrl
 //     });
 //   } catch (error) {
@@ -308,96 +411,6 @@ exports.getPublicVCard = async (req, res) => {
 //     res.status(500).json({ error: 'Error creating vCard', details: error.message });
 //   }
 // };
-
-
-
-
-
-
-
-
-// Updated createVCard function
-
-exports.createVCard = async (req, res) => {
-  try {
-    const { userId } = req.user;
-    let templateId, fields;
-
-    console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
-
-    // Check if data is sent as JSON or form-data
-    if (req.is('application/json')) {
-      ({ templateId, fields } = req.body);
-    } else if (req.body.data) {
-      try {
-        const parsedData = JSON.parse(req.body.data);
-        templateId = parsedData.templateId;
-        fields = parsedData.fields;
-      } catch (error) {
-        console.error('Error parsing JSON data:', error);
-        return res.status(400).json({ error: 'Invalid JSON data in form-data' });
-      }
-    } else {
-      console.error('No valid data found in request');
-      return res.status(400).json({ error: 'No valid data found in request' });
-    }
-
-    console.log('Parsed data:', { templateId, fields });
-
-    if (!Array.isArray(fields)) {
-      console.error('Fields is not an array:', fields);
-      return res.status(400).json({ error: 'Fields must be an array' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const newVCard = { templateId, fields };
-
-    // Handle file upload if present
-    if (req.files && req.files.profileImage) {
-      const file = req.files.profileImage;
-      const fileName = `${Date.now()}-${file.name}`;
-      const uploadPath = path.join(__dirname, '..', 'public', 'uploads', fileName);
-      await file.mv(uploadPath);
-      console.log('File uploaded:', uploadPath);
-
-      // Add or update profileImage field
-      const profileImageIndex = fields.findIndex(field => field.name === 'profileImage');
-      if (profileImageIndex !== -1) {
-        fields[profileImageIndex].value = `/uploads/${fileName}`;
-      } else {
-        fields.push({ name: 'profileImage', value: `/uploads/${fileName}` });
-      }
-    }
-
-    user.vCards.push(newVCard);
-    await user.save();
-
-    const vCardId = user.vCards[user.vCards.length - 1]._id;
-    const vCardString = generateVCardString(newVCard);
-    const previewLink = `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`;
-    const qrCodeDataUrl = await generateQRCode(vCardId);
-
-    // Update the vCard with the QR code
-    user.vCards[user.vCards.length - 1].qrCode = qrCodeDataUrl;
-    await user.save();
-
-    res.status(201).json({ 
-      message: 'vCard created successfully', 
-      vCardId: vCardId,
-      vCardString: vCardString,
-      previewLink: previewLink,
-      qrCodeDataUrl: qrCodeDataUrl
-    });
-  } catch (error) {
-    console.error('Error creating vCard:', error);
-    res.status(500).json({ error: 'Error creating vCard', details: error.message });
-  }
-};
 
 
 exports.uploadChunk = async (req, res) => {
@@ -439,6 +452,7 @@ exports.uploadChunk = async (req, res) => {
     res.status(500).send(err);
   }
 };
+
 exports.getPublicVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -577,6 +591,7 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
+
 
 // exports.handleQRScan = async (req, res) => {
 //   try {
@@ -1204,4 +1219,4 @@ exports.testGeolocation = async (req, res) => {
 
 
 
-module.exports = exports;
+module.exports = exports; 
