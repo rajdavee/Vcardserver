@@ -30,7 +30,8 @@ const userSchema = new mongoose.Schema({
     paymentDate: { type: Date, default: null },
     amount: { type: Number, default: 0 }
   },
-  vCards: [vCardSchema]
+  vCards: [vCardSchema],
+  role: { type: String, enum: ['user', 'admin'], default: 'user' }
 });
 
 // Password hashing middleware

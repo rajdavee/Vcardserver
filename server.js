@@ -9,14 +9,14 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const app = express();
 const fileUpload = require('express-fileupload');
 const ejs = require('ejs');
+const adminRoutes = require('./routes/adminRoutes');
 
 
 app.use(cors({
-origin: ['https://vcardclient.onrender.com','http://localhost:3000'],
-// origin: ['http://localhost:5000'],
-
+  origin: ['https://vcardclient.onrender.com', 'http://localhost:3000', 'http://localhost:5000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 
@@ -45,6 +45,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/admin', adminRoutes);  // Add this line
 
 
 app.get('/', (req, res) => {
