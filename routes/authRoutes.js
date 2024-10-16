@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const analyticsController = require('../controllers/analyticsController');
 const { 
   register, 
   login, 
@@ -61,5 +62,8 @@ router.post('/scan/:vCardId', handleScan);
 router.get('/test-geolocation', testGeolocation);
 
 router.post('/scan/:vCardId/time-spent', recordTimeSpent);
+
+
+router.get('/vcard-analytics/:vCardId', authenticateJWT, analyticsController.getVCardAnalytics);
 
 module.exports = router;

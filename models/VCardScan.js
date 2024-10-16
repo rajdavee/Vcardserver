@@ -13,7 +13,12 @@ const scanSchema = new mongoose.Schema({
     city: String,
     country: String
   },
-  timeSpent: Number // Add this line to track time spent
+  timeSpent: Number,
+  scanType: {
+    type: String,
+    enum: ['QR', 'Link'],
+    default: 'QR'
+  }
 });
 
 const vCardScanSchema = new mongoose.Schema({

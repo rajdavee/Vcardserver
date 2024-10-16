@@ -662,14 +662,14 @@ exports.getVCardPreview = async (req, res) => {
 // Updated handleQRScan function (placeholder for future implementation)
 
 
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
+    const { scanType = 'QR' } = req.query; // Default to 'QR' if not specified
     const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
     const userAgent = req.headers['user-agent'];
 
-    console.log(`Handling scan for vCardId: ${vCardId}`);
+    console.log(`Handling ${scanType} scan for vCardId: ${vCardId}`);
     console.log('IP Address:', ip);
     console.log('User Agent:', userAgent);
 
@@ -700,6 +700,7 @@ exports.handleScan = async (req, res) => {
           city: location.city,
           country: location.country,
         } : null,
+        scanType: scanType
       };
 
       vCardScan.scans.push(scanData);
@@ -719,65 +720,93 @@ exports.handleScan = async (req, res) => {
 
 
 
-
 exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
   res.status(501).json({ message: 'QR scan functionality not implemented yet' });
 };
 
-
-
 exports.getVCardAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    
-    console.log('Fetching analytics for vCardId:', vCardId);
+    const { userId } = req.user;
 
-    // Fetch all scans for this specific vCard
-    const scans = await VCardScan.find({ vCardId }).sort({ scanDate: -1 });
-    
-    console.log('Found scans:', JSON.stringify(scans, null, 2));
+    console.log(`Fetching analytics for vCardId: ${vCardId}`);
 
-    const totalScans = scans.length;
-    const recentScans = scans.slice(0, 5).map(scan => ({
-      scanDate: scan.scanDate,
-      location: {
-        city: scan.location.city || 'Unknown',
-        country: scan.location.country || 'Unknown'
+    // Check if the vCard belongs to the user
+    const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
+    if (!user) {
+      return res.status(404).json({ error: 'vCard not found or does not belong to the user' });
+    }
+
+    const vCardScan = await VCardScan.findOne({ vCardId });
+    console.log('Found scans:', JSON.stringify(vCardScan, null, 2));
+
+    if (!vCardScan || !vCardScan.scans || vCardScan.scans.length === 0) {
+      return res.json({
+        totalScans: 0,
+        totalQRScans: 0,
+        totalLinkClicks: 0,
+        recentScans: [],
+        locationBreakdown: {},
+        deviceBreakdown: {},
+        timeBreakdown: {}
+      });
+    }
+
+    const scans = vCardScan.scans;
+
+    const analytics = {
+      totalScans: scans.length,
+      totalQRScans: 0,
+      totalLinkClicks: 0,
+      recentScans: scans.slice(-10).reverse().map(scan => ({
+        scanDate: scan.scanDate,
+        location: {
+          city: scan.location?.city || 'Unknown',
+          country: scan.location?.country || 'Unknown'
+        },
+        device: scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop',
+        scanType: scan.scanType || 'Unknown'
+      })),
+      locationBreakdown: {},
+      deviceBreakdown: {},
+      timeBreakdown: {
+        hourly: Array(24).fill(0),
+        daily: Array(7).fill(0),
+        monthly: Array(12).fill(0)
       }
-    }));
-
-    // Process location breakdown
-    const locationBreakdown = scans.reduce((acc, scan) => {
-      const location = `${scan.location.city || 'Unknown'}, ${scan.location.country || 'Unknown'}`;
-      acc[location] = (acc[location] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Process device breakdown
-    const deviceBreakdown = scans.reduce((acc, scan) => {
-      const device = scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
-      acc[device] = (acc[device] || 0) + 1;
-      return acc;
-    }, {});
-
-    const analyticsData = {
-      totalScans,
-      recentScans,
-      locationBreakdown,
-      deviceBreakdown
     };
 
-    console.log('Analytics data:', JSON.stringify(analyticsData, null, 2));
+    scans.forEach(scan => {
+      // Count QR scans and link clicks
+      if (scan.scanType === 'QR') {
+        analytics.totalQRScans++;
+      } else if (scan.scanType === 'Link') {
+        analytics.totalLinkClicks++;
+      }
 
-    res.json(analyticsData);
+      // Location breakdown
+      const country = scan.location?.country || 'Unknown';
+      analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
+
+      // Device breakdown
+      const device = scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop';
+      analytics.deviceBreakdown[device] = (analytics.deviceBreakdown[device] || 0) + 1;
+
+      // Time breakdown
+      const scanDate = new Date(scan.scanDate);
+      analytics.timeBreakdown.hourly[scanDate.getHours()]++;
+      analytics.timeBreakdown.daily[scanDate.getDay()]++;
+      analytics.timeBreakdown.monthly[scanDate.getMonth()]++;
+    });
+
+    res.json(analytics);
   } catch (error) {
     console.error('Error fetching vCard analytics:', error);
     res.status(500).json({ error: 'Error fetching vCard analytics', details: error.message });
   }
 };
-
 
 
 exports.getVCardScanAnalytics = async (req, res) => {
@@ -827,6 +856,9 @@ exports.getVCardScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard scan analytics' });
   }
 };
+
+
+
 exports.getUserScanAnalytics = async (req, res) => {
   try {
     const { userId } = req.user;
