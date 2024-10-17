@@ -125,6 +125,9 @@ exports.getVCards = async (req, res) => {
   }
 };
 
+
+
+
 exports.getVCard = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -154,6 +157,10 @@ exports.getVCard = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard', details: error.message });
   }
 };
+
+
+
+
 
 exports.getPublicVCard = async (req, res) => {
   try {
@@ -187,6 +194,9 @@ exports.getPublicVCard = async (req, res) => {
 
 
 
+
+
+
 function generateVCardString(vCardData) {
   let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
   const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
@@ -209,11 +219,18 @@ function generateVCardString(vCardData) {
   return vCard;
 }
 
+
+
+
+
 async function generateQRCode(vCardData) {
   const vCardString = generateVCardString(vCardData);
   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
   return { qrCodeDataUrl, vCardString };
 }
+
+
+
 
 exports.createVCard = async (req, res) => {
   try {
@@ -262,6 +279,9 @@ exports.createVCard = async (req, res) => {
     res.status(500).json({ error: 'Error creating vCard', details: error.message });
   }
 };
+
+
+
 
 exports.updateVCard = async (req, res) => {
   try {
@@ -453,6 +473,9 @@ exports.uploadChunk = async (req, res) => {
   }
 };
 
+
+
+
 exports.getPublicVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -484,6 +507,8 @@ exports.getPublicVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
+
+
 
 
 
@@ -591,6 +616,8 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
+
+
 
 
 // exports.handleQRScan = async (req, res) => {
@@ -720,11 +747,18 @@ exports.handleScan = async (req, res) => {
 
 
 
+
+
+
 exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
   res.status(501).json({ message: 'QR scan functionality not implemented yet' });
 };
+
+
+
+
 
 exports.getVCardAnalytics = async (req, res) => {
   try {
@@ -807,6 +841,10 @@ exports.getVCardAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard analytics', details: error.message });
   }
 };
+
+
+
+
 
 
 exports.getVCardScanAnalytics = async (req, res) => {

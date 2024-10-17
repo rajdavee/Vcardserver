@@ -13,7 +13,7 @@ const adminRoutes = require('./routes/adminRoutes');
 
 
 app.use(cors({
-  origin: ['https://vcardclient.onrender.com', 'http://localhost:3000', 'http://localhost:5000'],
+  origin: ['https://vcardclient.vercel.app', 'http://localhost:3000', 'http://localhost:5000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
