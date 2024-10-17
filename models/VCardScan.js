@@ -16,7 +16,7 @@ const scanSchema = new mongoose.Schema({
   timeSpent: Number,
   scanType: {
     type: String,
-    enum: ['QR', 'Link'],
+    enum: ['QR', 'Link', 'Preview'],
     default: 'QR'
   }
 });
@@ -27,7 +27,10 @@ const vCardScanSchema = new mongoose.Schema({
     required: true,
     ref: 'User.vCards'
   },
-  scans: [scanSchema]
+  scans: [scanSchema],
+  qrScans: { type: Number, default: 0 },
+  linkClicks: { type: Number, default: 0 },
+  previewClicks: { type: Number, default: 0 }
 });
 
 module.exports = mongoose.model('VCardScan', vCardScanSchema);

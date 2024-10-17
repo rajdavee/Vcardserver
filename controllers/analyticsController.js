@@ -13,9 +13,12 @@ exports.getVCardAnalytics = async (req, res) => {
     }
 
     const vCardScan = await VCardScan.findOne({ vCardId });
-    if (!vCardScan || !vCardScan.scans || vCardScan.scans.length === 0) {
+    if (!vCardScan) {
       return res.json({
         totalScans: 0,
+        qrScans: 0,
+        linkClicks: 0,
+        previewClicks: 0,
         recentScans: [],
         locationBreakdown: {},
         deviceBreakdown: {},
@@ -27,13 +30,17 @@ exports.getVCardAnalytics = async (req, res) => {
 
     const analytics = {
       totalScans: scans.length,
+      qrScans: vCardScan.qrScans,
+      linkClicks: vCardScan.linkClicks,
+      previewClicks: vCardScan.previewClicks,
       recentScans: scans.slice(-10).reverse().map(scan => ({
         scanDate: scan.scanDate,
         location: {
           city: scan.location?.city || 'Unknown',
           country: scan.location?.country || 'Unknown'
         },
-        device: scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'
+        device: scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop',
+        scanType: scan.scanType
       })),
       locationBreakdown: {},
       deviceBreakdown: {},
@@ -50,7 +57,7 @@ exports.getVCardAnalytics = async (req, res) => {
       analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
 
       // Device breakdown
-      const device = scan.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
+      const device = scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop';
       analytics.deviceBreakdown[device] = (analytics.deviceBreakdown[device] || 0) + 1;
 
       // Time breakdown

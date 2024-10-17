@@ -687,11 +687,10 @@ exports.getVCardPreview = async (req, res) => {
 
 // Updated handleQRScan function (placeholder for future implementation)
 
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const { scanType = 'QR' } = req.query; // Default to 'QR' if not specified
+    const { scanType = 'QR' } = req.query;
     const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
     const userAgent = req.headers['user-agent'];
 
@@ -730,6 +729,16 @@ exports.handleScan = async (req, res) => {
       };
 
       vCardScan.scans.push(scanData);
+
+      // Increment the appropriate counter
+      if (scanType === 'QR') {
+        vCardScan.qrScans++;
+      } else if (scanType === 'Link') {
+        vCardScan.linkClicks++;
+      } else if (scanType === 'Preview') {
+        vCardScan.previewClicks++;
+      }
+
       await vCardScan.save();
 
       console.log('New scan recorded successfully');
