@@ -10,6 +10,7 @@
   const path = require('path');
   const crypto = require('crypto');
   const VCardScan = require('../models/VCardScan');
+  const geoip = require('geoip-lite');
   const axios = require('axios');
   const mongoose = require('mongoose');
 
