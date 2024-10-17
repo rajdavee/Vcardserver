@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const VCard = require('../models/VCard');
+const VCard = require('../models/Vcard');
 const VCardScan = require('../models/VCardScan');
 
 exports.getAllUsers = async (req, res) => {
