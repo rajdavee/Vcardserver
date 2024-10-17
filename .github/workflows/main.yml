@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  deploy:
+  test-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -20,14 +20,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Uncomment the following step if you have tests set up
-      # - name: Run tests
-      #   run: npm test
+      - name: Run tests
+        run: npm test
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.ORGID }}
-          vercel-project-id: ${{ secrets.PROJECTID }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: "--prod"

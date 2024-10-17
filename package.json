@@ -5,7 +5,8 @@
     "scripts": {
         "start": "node server.js",
         "dev": "nodemon server.js",
-        "build": "echo 'Build step not required'"
+        "build": "echo 'Build step not required'",
+        "test": "echo 'No tests specified' && exit 0"
     },
     "dependencies": {
         "bcryptjs": "^2.4.3",
