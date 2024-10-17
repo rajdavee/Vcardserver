@@ -687,11 +687,20 @@ exports.getVCardPreview = async (req, res) => {
 
 // Updated handleQRScan function (placeholder for future implementation)
 
+
+
+// Replace the existing handleScan function with this updated version
+
+
+
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
     const { scanType = 'QR' } = req.query;
-    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
+    const ip = req.headers['x-forwarded-for'] || 
+               req.connection.remoteAddress || 
+               req.socket.remoteAddress ||
+               (req.connection.socket ? req.connection.socket.remoteAddress : null);
     const userAgent = req.headers['user-agent'];
 
     console.log(`Handling ${scanType} scan for vCardId: ${vCardId}`);
@@ -704,49 +713,44 @@ exports.handleScan = async (req, res) => {
       vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    // Check if a scan from this IP exists within the last 24 hours
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const existingScan = vCardScan.scans.find(scan => 
-      scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
-    );
+    // Improved device detection
+    const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const device = isMobile ? 'Mobile' : 'Desktop';
 
-    if (!existingScan) {
-      console.log('Creating new scan record');
-      const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-      const location = ipApiResponse.data;
+    // Use a more reliable geolocation service (you may need to sign up for an API key)
+    const geoApiUrl = `https://api.ipgeolocation.io/ipgeo?apiKey=YOUR_API_KEY&ip=${ip}`;
+    const geoResponse = await axios.get(geoApiUrl);
+    const locationData = geoResponse.data;
 
-      const scanData = {
-        ipAddress: ip,
-        userAgent,
-        scanDate: new Date(),
-        location: location.status === 'success' ? {
-          latitude: location.lat,
-          longitude: location.lon,
-          city: location.city,
-          country: location.country,
-        } : null,
-        scanType: scanType
-      };
+    const scanData = {
+      ipAddress: ip,
+      userAgent,
+      scanDate: new Date(),
+      location: {
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        city: locationData.city,
+        country: locationData.country_name
+      },
+      device,
+      scanType
+    };
 
-      vCardScan.scans.push(scanData);
+    vCardScan.scans.push(scanData);
 
-      // Increment the appropriate counter
-      if (scanType === 'QR') {
-        vCardScan.qrScans++;
-      } else if (scanType === 'Link') {
-        vCardScan.linkClicks++;
-      } else if (scanType === 'Preview') {
-        vCardScan.previewClicks++;
-      }
-
-      await vCardScan.save();
-
-      console.log('New scan recorded successfully');
-      res.status(200).json({ success: true, message: 'New scan recorded successfully' });
-    } else {
-      console.log('Recent scan found, not creating a new record');
-      res.status(200).json({ success: true, message: 'Recent scan exists, no new record created' });
+    // Update the appropriate counter
+    if (scanType === 'QR') {
+      vCardScan.qrScans++;
+    } else if (scanType === 'Link') {
+      vCardScan.linkClicks++;
+    } else if (scanType === 'Preview') {
+      vCardScan.previewClicks++;
     }
+
+    await vCardScan.save();
+
+    console.log('Scan recorded successfully');
+    res.status(200).json({ success: true, message: 'Scan recorded successfully' });
   } catch (error) {
     console.error('Error handling scan:', error);
     res.status(500).json({ success: false, error: 'Error handling scan' });
@@ -755,40 +759,24 @@ exports.handleScan = async (req, res) => {
 
 
 
-
-
-
-exports.handleQRScan = async (req, res) => {
-
-  // This function will be implemented later
-  res.status(501).json({ message: 'QR scan functionality not implemented yet' });
-};
-
-
-
-
-
+// Update the getVCardAnalytics function
 exports.getVCardAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
     const { userId } = req.user;
 
-    console.log(`Fetching analytics for vCardId: ${vCardId}`);
-
-    // Check if the vCard belongs to the user
     const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
     if (!user) {
       return res.status(404).json({ error: 'vCard not found or does not belong to the user' });
     }
 
     const vCardScan = await VCardScan.findOne({ vCardId });
-    console.log('Found scans:', JSON.stringify(vCardScan, null, 2));
-
-    if (!vCardScan || !vCardScan.scans || vCardScan.scans.length === 0) {
+    if (!vCardScan) {
       return res.json({
         totalScans: 0,
-        totalQRScans: 0,
-        totalLinkClicks: 0,
+        qrScans: 0,
+        linkClicks: 0,
+        previewClicks: 0,
         recentScans: [],
         locationBreakdown: {},
         deviceBreakdown: {},
@@ -800,16 +788,17 @@ exports.getVCardAnalytics = async (req, res) => {
 
     const analytics = {
       totalScans: scans.length,
-      totalQRScans: 0,
-      totalLinkClicks: 0,
+      qrScans: vCardScan.qrScans,
+      linkClicks: vCardScan.linkClicks,
+      previewClicks: vCardScan.previewClicks,
       recentScans: scans.slice(-10).reverse().map(scan => ({
         scanDate: scan.scanDate,
         location: {
           city: scan.location?.city || 'Unknown',
           country: scan.location?.country || 'Unknown'
         },
-        device: scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop',
-        scanType: scan.scanType || 'Unknown'
+        device: scan.device,
+        scanType: scan.scanType
       })),
       locationBreakdown: {},
       deviceBreakdown: {},
@@ -821,20 +810,12 @@ exports.getVCardAnalytics = async (req, res) => {
     };
 
     scans.forEach(scan => {
-      // Count QR scans and link clicks
-      if (scan.scanType === 'QR') {
-        analytics.totalQRScans++;
-      } else if (scan.scanType === 'Link') {
-        analytics.totalLinkClicks++;
-      }
-
       // Location breakdown
       const country = scan.location?.country || 'Unknown';
       analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
 
       // Device breakdown
-      const device = scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop';
-      analytics.deviceBreakdown[device] = (analytics.deviceBreakdown[device] || 0) + 1;
+      analytics.deviceBreakdown[scan.device] = (analytics.deviceBreakdown[scan.device] || 0) + 1;
 
       // Time breakdown
       const scanDate = new Date(scan.scanDate);
@@ -849,6 +830,20 @@ exports.getVCardAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard analytics', details: error.message });
   }
 };
+
+
+
+
+
+exports.handleQRScan = async (req, res) => {
+
+  // This function will be implemented later
+  res.status(501).json({ message: 'QR scan functionality not implemented yet' });
+};
+
+
+
+
 
 
 
