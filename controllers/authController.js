@@ -10,7 +10,6 @@
   const path = require('path');
   const crypto = require('crypto');
   const VCardScan = require('../models/VCardScan');
-  const geoip = require('geoip-lite');
   const axios = require('axios');
   const mongoose = require('mongoose');
 
@@ -1264,8 +1263,6 @@ exports.resendVerification = async (req, res) => {
 
 
 
-
-
 exports.testGeolocation = async (req, res) => {
   try {
     const testIp = req.query.ip || '8.8.8.8'; // Use Google's public DNS as a default test IP
@@ -1300,8 +1297,6 @@ exports.testGeolocation = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error testing geolocation' });
   }
 };
-
-
 
 
 

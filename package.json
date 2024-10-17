@@ -16,7 +16,6 @@
         "express": "^4.17.1",
         "express-fileupload": "^1.5.1",
         "fs-extra": "^11.2.0",
-        "geoip-lite": "^1.4.10",
         "jsonwebtoken": "^8.5.1",
         "mongoose": "^6.0.12",
         "multer": "^1.4.5-lts.1",
@@ -27,7 +26,8 @@
         "razorpay": "^2.9.4",
         "stripe": "^17.0.0",
         "vcards-js": "^2.10.0",
-        "vcf": "^2.1.2"
+        "vcf": "^2.1.2",
+        "axios": "^0.21.1"
     },
     "devDependencies": {
         "nodemon": "^2.0.15"
