@@ -371,7 +371,7 @@ exports.deleteVCard = async (req, res) => {
 
     console.log('VCard deleted successfully');
     res.json({ message: 'VCard deleted successfully' });
-  } catch (error) {
+    } catch (error) {
     console.error('Error deleting vCard:', error);
     res.status(500).json({ error: 'Error deleting vCard', details: error.message });
   }
