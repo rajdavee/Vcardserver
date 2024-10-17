@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  test-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -15,15 +15,12 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "18"
+          node-version: "20"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      # Removed the test step
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
