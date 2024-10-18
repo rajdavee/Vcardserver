@@ -225,15 +225,11 @@ exports.createVCard = async (req, res) => {
       fields
     };
 
-    // Handle file upload if present
-    if (req.files && req.files.profileImage) {
-      try {
-        const imagePath = await uploadImage(req.files.profileImage);
+       // Handle file upload if present
+       if (req.file) {
+        const imagePath = `/uploads/${req.file.filename}`;
         newVCard.fields.push({ name: 'profileImage', value: imagePath });
-      } catch (uploadError) {
-        return res.status(400).json({ error: uploadError.message });
       }
-    }
 
     const { qrCodeDataUrl, vCardString } = await generateQRCode(newVCard);
     
@@ -261,7 +257,6 @@ exports.createVCard = async (req, res) => {
 };
 
 
-
 exports.updateVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -279,22 +274,19 @@ exports.updateVCard = async (req, res) => {
     }
 
     // Handle file upload if present
-    if (req.files && req.files.profileImage) {
-      try {
-        const imagePath = await uploadImage(req.files.profileImage);
-        
-        // Remove old image file if it exists
-        const oldImageField = fields.find(field => field.name === 'profileImage');
-        if (oldImageField) {
-          const oldImagePath = path.join(__dirname, '..', 'public', oldImageField.value);
-          await fs.unlink(oldImagePath).catch(() => {}); // Ignore errors if file doesn't exist
-        }
-
-        fields = fields.filter(field => field.name !== 'profileImage');
-        fields.push({ name: 'profileImage', value: imagePath });
-      } catch (uploadError) {
-        return res.status(400).json({ error: uploadError.message });
+    if (req.file) {
+      const imagePath = `/uploads/${req.file.filename}`;
+      
+      // Remove old image file if it exists
+      const oldImageField = user.vCards[vCardIndex].fields.find(field => field.name === 'profileImage');
+      if (oldImageField) {
+        const oldImagePath = path.join(__dirname, '..', 'public', oldImageField.value);
+        await fs.unlink(oldImagePath).catch(() => {}); // Ignore errors if file doesn't exist
       }
+
+      // Update fields with new image path
+      fields = fields.filter(field => field.name !== 'profileImage');
+      fields.push({ name: 'profileImage', value: imagePath });
     }
 
     user.vCards[vCardIndex].templateId = templateId;
@@ -308,6 +300,7 @@ exports.updateVCard = async (req, res) => {
 
     res.json({
       message: 'vCard updated successfully',
+      vCardId: vCardId,
       qrCodeDataUrl: qrCodeDataUrl,
       vCardString: vCardString,
       previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`
@@ -317,8 +310,6 @@ exports.updateVCard = async (req, res) => {
     res.status(500).json({ error: 'Error updating vCard', details: error.message });
   }
 };
-
-
 
 
 

@@ -2,37 +2,42 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const path = require('path');  // Add this line
+const path = require('path');
+const multer = require('multer');
 const authRoutes = require('./routes/authRoutes');
 const paymentRoutes = require('./routes/paymentRoutes'); 
 const app = express();
-const fileUpload = require('express-fileupload');
-const ejs = require('ejs');
-const adminRoutes = require('./routes/adminRoutes');
-
 
 app.use(cors({
-  origin: ['https://vcardclient.vercel.app', 'http://localhost:3000', 'http://localhost:5000'],
+  origin: ['https://vcardclient.onrender.com', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, 'public', 'uploads'));
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
 
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 200 * 1024 * 1024 } // 200MB limit
+});
 
-// Increase payload size limit
-app.use(fileUpload({
-  useTempFiles: true,
-  tempFileDir: '/tmp/',
-  limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB limit
-}));
+// Make upload middleware available to routes
+app.locals.upload = upload;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve static files from the 'public' directory
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));  // Add this line
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
@@ -45,18 +50,14 @@ mongoose.connect(process.env.MONGODB_URI, {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/admin', adminRoutes);  // Add this line
-
 
 app.get('/', (req, res) => {
   res.send('Backend server is running. API is available at /api');
-});+
-
+});
 
 // Set up EJS as the template engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-
 
 // Global error handler
 app.use((err, req, res, next) => {
