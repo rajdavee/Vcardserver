@@ -31,27 +31,6 @@
 
 
 
-// const uploadImage = async (file) => {
-//   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-//   const maxSize = 5 * 1024 * 1024; // 5MB
-
-//   if (!allowedTypes.includes(file.mimetype)) {
-//     throw new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed.');
-//   }
-
-//   if (file.size > maxSize) {
-//     throw new Error('File size exceeds the 5MB limit.');
-//   }
-
-//   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}_${file.name}`;
-//   const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
-
-//   await file.mv(filePath);
-//   return `/uploads/${fileName}`;
-// };
-
-
-
 const uploadImage = async (file) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
   const maxSize = 5 * 1024 * 1024; // 5MB
@@ -65,13 +44,14 @@ const uploadImage = async (file) => {
   }
 
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}_${file.name}`;
-  const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'public', 'uploads');
-  const filePath = path.join(uploadDir, fileName);
+  const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
 
-  await fs.ensureDir(uploadDir);
   await file.mv(filePath);
   return `/uploads/${fileName}`;
 };
+
+
+
 
 
 
