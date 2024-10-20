@@ -9,7 +9,9 @@
         "test": "echo 'No tests specified' && exit 0"
     },
     "dependencies": {
+        "axios": "^0.21.1",
         "bcryptjs": "^2.4.3",
+        "cloudinary": "^2.5.1",
         "cors": "^2.8.5",
         "crypto": "^1.0.1",
         "dotenv": "^10.0.0",
@@ -27,8 +29,7 @@
         "razorpay": "^2.9.4",
         "stripe": "^17.0.0",
         "vcards-js": "^2.10.0",
-        "vcf": "^2.1.2",
-        "axios": "^0.21.1"
+        "vcf": "^2.1.2"
     },
     "devDependencies": {
         "nodemon": "^2.0.15"

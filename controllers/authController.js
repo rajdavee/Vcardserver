@@ -12,6 +12,7 @@
   const VCardScan = require('../models/VCardScan');
   const axios = require('axios');
   const mongoose = require('mongoose');
+  const cloudinary = require('../config/cloudinaryConfig');
 
 
 
@@ -31,6 +32,25 @@
 
 
 
+// const uploadImage = async (file) => {
+//   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+//   const maxSize = 5 * 1024 * 1024; // 5MB
+
+//   if (!allowedTypes.includes(file.mimetype)) {
+//     throw new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed.');
+//   }
+
+//   if (file.size > maxSize) {
+//     throw new Error('File size exceeds the 5MB limit.');
+//   }
+
+//   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}_${file.name}`;
+//   const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
+
+//   await file.mv(filePath);
+//   return `/uploads/${fileName}`;
+// };
+
 const uploadImage = async (file) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
   const maxSize = 5 * 1024 * 1024; // 5MB
@@ -43,12 +63,19 @@ const uploadImage = async (file) => {
     throw new Error('File size exceeds the 5MB limit.');
   }
 
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}_${file.name}`;
-  const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
-
-  await file.mv(filePath);
-  return `/uploads/${fileName}`;
+  try {
+    const result = await cloudinary.uploader.upload(file.tempFilePath, {
+      folder: 'vcard_images',
+      use_filename: true,
+      unique_filename: true,
+    });
+    return result.secure_url;
+  } catch (error) {
+    console.error('Error uploading to Cloudinary:', error);
+    throw new Error('Failed to upload image');
+  }
 };
+
 
 
 
@@ -210,6 +237,58 @@ async function generateQRCode(vCardData) {
 
 
 
+// exports.createVCard = async (req, res) => {
+//   try {
+//     const { userId } = req.user;
+//     const { templateId, fields } = JSON.parse(req.body.data);
+
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     const newVCard = {
+//       templateId,
+//       fields
+//     };
+
+//     // Handle file upload if present
+//     if (req.files && req.files.profileImage) {
+//       try {
+//         const imagePath = await uploadImage(req.files.profileImage);
+//         newVCard.fields.push({ name: 'profileImage', value: imagePath });
+//       } catch (uploadError) {
+//         return res.status(400).json({ error: uploadError.message });
+//       }
+//     }
+
+//     const { qrCodeDataUrl, vCardString } = await generateQRCode(newVCard);
+    
+//     const vCardId = new mongoose.Types.ObjectId();
+//     user.vCards.push({
+//       _id: vCardId,
+//       ...newVCard,
+//       qrCode: qrCodeDataUrl,
+//       vCardString: vCardString
+//     });
+
+//     await user.save();
+
+//     res.status(201).json({
+//       message: 'vCard created successfully',
+//       vCardId: vCardId.toString(),
+//       qrCodeDataUrl: qrCodeDataUrl,
+//       vCardString: vCardString,
+//       previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId.toString()}`
+//     });
+//   } catch (error) {
+//     console.error('Error creating vCard:', error);
+//     res.status(500).json({ error: 'Error creating vCard', details: error.message });
+//   }
+// };
+
+
+
 exports.createVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -262,6 +341,65 @@ exports.createVCard = async (req, res) => {
 
 
 
+
+// exports.updateVCard = async (req, res) => {
+//   try {
+//     const { userId } = req.user;
+//     const { vCardId } = req.params;
+//     let { templateId, fields } = JSON.parse(req.body.data);
+
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+
+//     const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
+//     if (vCardIndex === -1) {
+//       return res.status(404).json({ error: 'vCard not found' });
+//     }
+
+//     // Handle file upload if present
+//     if (req.files && req.files.profileImage) {
+//       try {
+//         const imagePath = await uploadImage(req.files.profileImage);
+        
+//         // Remove old image file if it exists
+//         const oldImageField = fields.find(field => field.name === 'profileImage');
+//         if (oldImageField) {
+//           const oldImagePath = path.join(__dirname, '..', 'public', oldImageField.value);
+//           await fs.unlink(oldImagePath).catch(() => {}); // Ignore errors if file doesn't exist
+//         }
+
+//         fields = fields.filter(field => field.name !== 'profileImage');
+//         fields.push({ name: 'profileImage', value: imagePath });
+//       } catch (uploadError) {
+//         return res.status(400).json({ error: uploadError.message });
+//       }
+//     }
+
+//     user.vCards[vCardIndex].templateId = templateId;
+//     user.vCards[vCardIndex].fields = fields;
+
+//     const { qrCodeDataUrl, vCardString } = await generateQRCode(user.vCards[vCardIndex]);
+//     user.vCards[vCardIndex].qrCode = qrCodeDataUrl;
+//     user.vCards[vCardIndex].vCardString = vCardString;
+
+//     await user.save();
+
+//     res.json({
+//       message: 'vCard updated successfully',
+//       qrCodeDataUrl: qrCodeDataUrl,
+//       vCardString: vCardString,
+//       previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`
+//     });
+//   } catch (error) {
+//     console.error('Error updating vCard:', error);
+//     res.status(500).json({ error: 'Error updating vCard', details: error.message });
+//   }
+// };
+
+
+
 exports.updateVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -283,11 +421,11 @@ exports.updateVCard = async (req, res) => {
       try {
         const imagePath = await uploadImage(req.files.profileImage);
         
-        // Remove old image file if it exists
+        // Remove old image from Cloudinary if it exists
         const oldImageField = fields.find(field => field.name === 'profileImage');
         if (oldImageField) {
-          const oldImagePath = path.join(__dirname, '..', 'public', oldImageField.value);
-          await fs.unlink(oldImagePath).catch(() => {}); // Ignore errors if file doesn't exist
+          const oldPublicId = oldImageField.value.split('/').pop().split('.')[0];
+          await cloudinary.uploader.destroy(`vcard_images/${oldPublicId}`);
         }
 
         fields = fields.filter(field => field.name !== 'profileImage');
@@ -341,6 +479,50 @@ exports.updateVCard = async (req, res) => {
 
 
 
+
+// exports.uploadChunk = async (req, res) => {
+//   if (!req.files || Object.keys(req.files).length === 0) {
+//     return res.status(400).send('No files were uploaded.');
+//   }
+
+//   const { chunk } = req.files;
+//   const { fileName, chunkIndex, totalChunks } = req.body;
+
+//   const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
+//   const chunkDir = path.join(uploadDir, fileName);
+//   await fs.ensureDir(chunkDir);
+
+//   const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
+  
+//   try {
+//     await chunk.mv(chunkPath);
+    
+//     if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
+//       // All chunks received, start reassembly
+//       const finalPath = path.join(uploadDir, fileName);
+//       const writeStream = fs.createWriteStream(finalPath);
+//       for (let i = 0; i < totalChunks; i++) {
+//         const chunkData = await fs.readFile(path.join(chunkDir, `chunk_${i}`));
+//         writeStream.write(chunkData);
+//       }
+//       writeStream.end();
+
+//       // Clean up chunk files
+//       await fs.remove(chunkDir);
+
+//       res.send({ message: 'File upload completed', filePath: `/uploads/${fileName}` });
+//     } else {
+//       res.send('Chunk received');
+//     }
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).send(err);
+//   }
+// };
+
+
+
+
 exports.uploadChunk = async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -349,29 +531,38 @@ exports.uploadChunk = async (req, res) => {
   const { chunk } = req.files;
   const { fileName, chunkIndex, totalChunks } = req.body;
 
-  const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
-  const chunkDir = path.join(uploadDir, fileName);
-  await fs.ensureDir(chunkDir);
-
-  const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
-  
   try {
-    await chunk.mv(chunkPath);
-    
+    const result = await cloudinary.uploader.upload(chunk.tempFilePath, {
+      resource_type: 'video',
+      folder: 'vcard_videos',
+      public_id: `${fileName}_chunk_${chunkIndex}`,
+      use_filename: true,
+      unique_filename: false,
+    });
+
     if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
-      // All chunks received, start reassembly
-      const finalPath = path.join(uploadDir, fileName);
-      const writeStream = fs.createWriteStream(finalPath);
+      // All chunks uploaded, create the final video
+      const chunkUrls = [];
       for (let i = 0; i < totalChunks; i++) {
-        const chunkData = await fs.readFile(path.join(chunkDir, `chunk_${i}`));
-        writeStream.write(chunkData);
+        const chunkResult = await cloudinary.api.resource(`vcard_videos/${fileName}_chunk_${i}`, { resource_type: 'video' });
+        chunkUrls.push(chunkResult.secure_url);
       }
-      writeStream.end();
+
+      // Use Cloudinary's API to concatenate video chunks
+      const finalResult = await cloudinary.uploader.upload(chunkUrls.join('|'), {
+        resource_type: 'video',
+        folder: 'vcard_videos',
+        public_id: fileName,
+        use_filename: true,
+        unique_filename: false,
+      });
 
       // Clean up chunk files
-      await fs.remove(chunkDir);
+      for (let i = 0; i < totalChunks; i++) {
+        await cloudinary.uploader.destroy(`vcard_videos/${fileName}_chunk_${i}`, { resource_type: 'video' });
+      }
 
-      res.send({ message: 'File upload completed', filePath: `/uploads/${fileName}` });
+      res.send({ message: 'File upload completed', filePath: finalResult.secure_url });
     } else {
       res.send('Chunk received');
     }
@@ -380,7 +571,6 @@ exports.uploadChunk = async (req, res) => {
     res.status(500).send(err);
   }
 };
-
 
 
 
