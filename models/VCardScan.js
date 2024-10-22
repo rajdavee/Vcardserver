@@ -1,23 +1,36 @@
 const mongoose = require('mongoose');
 
-const VCardScanSchema = new mongoose.Schema({
-  vCardId: { type: mongoose.Schema.Types.ObjectId, ref: 'VCard', required: true },
-  qrScans: { type: Number, default: 0 },
-  linkClicks: { type: Number, default: 0 },
-  previewClicks: { type: Number, default: 0 },
-  scans: [{
-    ipAddress: String,
-    userAgent: String,
-    scanDate: Date,
-    scanType: String,
-    device: String,
-    location: {
-      city: String,
-      country: String,
-      latitude: Number,
-      longitude: Number
-    }
-  }]
+const scanSchema = new mongoose.Schema({
+  ipAddress: String,
+  userAgent: String,
+  scanDate: {
+    type: Date,
+    default: Date.now
+  },
+  location: {
+    latitude: Number,
+    longitude: Number,
+    city: String,
+    country: String
+  },
+  timeSpent: Number,
+  scanType: {
+    type: String,
+    enum: ['QR', 'Link', 'Preview'],
+    default: 'QR'
+  }
 });
 
-module.exports = mongoose.model('VCardScan', VCardScanSchema);
+const vCardScanSchema = new mongoose.Schema({
+  vCardId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User.vCards'
+  },
+  scans: [scanSchema],
+  qrScans: { type: Number, default: 0 },
+  linkClicks: { type: Number, default: 0 },
+  previewClicks: { type: Number, default: 0 }
+});
+
+module.exports = mongoose.model('VCardScan', vCardScanSchema);
