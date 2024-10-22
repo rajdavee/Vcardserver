@@ -417,6 +417,8 @@ exports.getPublicVCardPreview = async (req, res) => {
   }
 };
 
+ 
+
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -441,71 +443,42 @@ exports.getVCardPreview = async (req, res) => {
       return res.status(404).json({ error: 'vCard not found in user document' });
     }
 
-    // Check if a scan from this IP for this vCard already exists within the last 24 hours
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     let vCardScan = await VCardScan.findOne({ vCardId });
 
     if (vCardScan) {
-      const existingScan = vCardScan.scans.find(scan => 
-        scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
-      );
+      const existingScan = vCardScan.scans.find(scan => scan.ipAddress === ip);
 
-      if (existingScan) {
-        console.log('Recent scan found, updating existing record');
-        existingScan.scanDate = new Date();
-        await vCardScan.save();
-      } else {
+      if (!existingScan) {
         console.log('Creating new scan record');
-        let location;
-        try {
-          const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-          location = ipApiResponse.data;
-          console.log('Location data:', location);
-        } catch (error) {
-          console.error('Error fetching location data:', error);
-          location = null;
-        }
+        const locationData = await getLocationData(ip);
 
         const scanData = {
           ipAddress: ip,
           userAgent,
           scanDate: new Date(),
-          location: location && location.status === 'success' ? {
-            latitude: location.lat,
-            longitude: location.lon,
-            city: location.city,
-            country: location.country,
-          } : null,
+          location: locationData,
+          scanType: 'Preview'
         };
 
         vCardScan.scans.push(scanData);
+        vCardScan.previewClicks = (vCardScan.previewClicks || 0) + 1;
         await vCardScan.save();
+      } else {
+        console.log('IP has already previewed this vCard');
       }
     } else {
       console.log('Creating new VCardScan document');
-      let location;
-      try {
-        const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-        location = ipApiResponse.data;
-        console.log('Location data:', location);
-      } catch (error) {
-        console.error('Error fetching location data:', error);
-        location = null;
-      }
+      const locationData = await getLocationData(ip);
 
       const scanData = {
         ipAddress: ip,
         userAgent,
         scanDate: new Date(),
-        location: location && location.status === 'success' ? {
-          latitude: location.lat,
-          longitude: location.lon,
-          city: location.city,
-          country: location.country,
-        } : null,
+        location: locationData,
+        scanType: 'Preview'
       };
 
-      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+      vCardScan = new VCardScan({ vCardId, scans: [scanData], previewClicks: 1 });
       await vCardScan.save();
     }
 
@@ -521,6 +494,30 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
+
+async function getLocationData(ip) {
+  try {
+    const response = await axios.get(`http://ip-api.com/json/${ip}`);
+    if (response.data.status === 'success') {
+      return {
+        city: response.data.city,
+        country: response.data.country,
+        latitude: response.data.lat,
+        longitude: response.data.lon
+      };
+    } else {
+      throw new Error('Failed to get location data');
+    }
+  } catch (error) {
+    console.error('Error fetching location data:', error);
+    return {
+      city: 'Unknown',
+      country: 'Unknown',
+      latitude: null,
+      longitude: null
+    };
+  }
+}
 
 exports.handleScan = async (req, res) => {
   try {
@@ -542,44 +539,41 @@ exports.handleScan = async (req, res) => {
       vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    // Improved device detection
-    const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    const device = isMobile ? 'Mobile' : 'Desktop';
+    // Check if this IP has already scanned this vCard
+    const existingScan = vCardScan.scans.find(scan => scan.ipAddress === ip);
 
-    // Use a more reliable geolocation service (you may need to sign up for an API key)
-    const geoApiUrl = `https://api.ipgeolocation.io/ipgeo?apiKey=YOUR_API_KEY&ip=${ip}`;
-    const geoResponse = await axios.get(geoApiUrl);
-    const locationData = geoResponse.data;
+    if (!existingScan) {
+      const locationData = await getLocationData(ip);
 
-    const scanData = {
-      ipAddress: ip,
-      userAgent,
-      scanDate: new Date(),
-      location: {
-        latitude: locationData.latitude,
-        longitude: locationData.longitude,
-        city: locationData.city,
-        country: locationData.country_name
-      },
-      device,
-      scanType
-    };
+    // Inside the handleScan function, when creating scanData:
+const scanData = {
+  ipAddress: ip,
+  userAgent,
+  scanDate: new Date(),
+  scanType,
+  location: locationData,
+device: userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'
+};
 
-    vCardScan.scans.push(scanData);
+      vCardScan.scans.push(scanData);
 
-    // Update the appropriate counter
-    if (scanType === 'QR') {
-      vCardScan.qrScans++;
-    } else if (scanType === 'Link') {
-      vCardScan.linkClicks++;
-    } else if (scanType === 'Preview') {
-      vCardScan.previewClicks++;
+      // Update the appropriate counter only for new scans
+      if (scanType === 'QR') {
+        vCardScan.qrScans = (vCardScan.qrScans || 0) + 1;
+      } else if (scanType === 'Link') {
+        vCardScan.linkClicks = (vCardScan.linkClicks || 0) + 1;
+      } else if (scanType === 'Preview') {
+        vCardScan.previewClicks = (vCardScan.previewClicks || 0) + 1;
+      }
+
+      await vCardScan.save();
+
+      console.log('New scan recorded successfully');
+      res.status(200).json({ success: true, message: 'New scan recorded successfully' });
+    } else {
+      console.log('IP has already scanned this vCard');
+      res.status(200).json({ success: true, message: 'IP has already scanned this vCard' });
     }
-
-    await vCardScan.save();
-
-    console.log('Scan recorded successfully');
-    res.status(200).json({ success: true, message: 'Scan recorded successfully' });
   } catch (error) {
     console.error('Error handling scan:', error);
     res.status(500).json({ success: false, error: 'Error handling scan' });
@@ -1105,3 +1099,6 @@ exports.testGeolocation = async (req, res) => {
 
 
 module.exports = exports; 
+
+
+
