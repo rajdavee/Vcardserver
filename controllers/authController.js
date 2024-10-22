@@ -518,7 +518,6 @@ async function getLocationData(ip) {
     };
   }
 }
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -545,15 +544,14 @@ exports.handleScan = async (req, res) => {
     if (!existingScan) {
       const locationData = await getLocationData(ip);
 
-    // Inside the handleScan function, when creating scanData:
-const scanData = {
-  ipAddress: ip,
-  userAgent,
-  scanDate: new Date(),
-  scanType,
-  location: locationData,
-device: userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'
-};
+      const scanData = {
+        ipAddress: ip,
+        userAgent,
+        scanDate: new Date(),
+        scanType,
+        location: locationData,
+        device: userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'
+      };
 
       vCardScan.scans.push(scanData);
 
@@ -579,13 +577,12 @@ device: userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'
     res.status(500).json({ success: false, error: 'Error handling scan' });
   }
 };
-
-// Update the getVCardAnalytics function
 exports.getVCardAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
     const { userId } = req.user;
 
+    // Check if the vCard belongs to the user
     const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
     if (!user) {
       return res.status(404).json({ error: 'vCard not found or does not belong to the user' });
@@ -608,19 +605,11 @@ exports.getVCardAnalytics = async (req, res) => {
     const scans = vCardScan.scans;
 
     const analytics = {
-      totalScans: scans.length,
-      qrScans: vCardScan.qrScans,
-      linkClicks: vCardScan.linkClicks,
-      previewClicks: vCardScan.previewClicks,
-      recentScans: scans.slice(-10).reverse().map(scan => ({
-        scanDate: scan.scanDate,
-        location: {
-          city: scan.location?.city || 'Unknown',
-          country: scan.location?.country || 'Unknown'
-        },
-        device: scan.device,
-        scanType: scan.scanType
-      })),
+      totalScans: 0,
+      qrScans: vCardScan.qrScans || 0,
+      linkClicks: vCardScan.linkClicks || 0,
+      previewClicks: vCardScan.previewClicks || 0,
+      recentScans: [],
       locationBreakdown: {},
       deviceBreakdown: {},
       timeBreakdown: {
@@ -630,20 +619,44 @@ exports.getVCardAnalytics = async (req, res) => {
       }
     };
 
-    scans.forEach(scan => {
-      // Location breakdown
-      const country = scan.location?.country || 'Unknown';
-      analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
+    const uniqueIPs = new Set();
 
-      // Device breakdown
-      analytics.deviceBreakdown[scan.device] = (analytics.deviceBreakdown[scan.device] || 0) + 1;
+    for (const scan of scans) {
+      if (!uniqueIPs.has(scan.ipAddress)) {
+        uniqueIPs.add(scan.ipAddress);
+        analytics.totalScans++;
 
-      // Time breakdown
-      const scanDate = new Date(scan.scanDate);
-      analytics.timeBreakdown.hourly[scanDate.getHours()]++;
-      analytics.timeBreakdown.daily[scanDate.getDay()]++;
-      analytics.timeBreakdown.monthly[scanDate.getMonth()]++;
-    });
+        // Recent scans
+        if (analytics.recentScans.length < 10) {
+          analytics.recentScans.push({
+            scanDate: scan.scanDate,
+            location: {
+              city: scan.location?.city || 'Unknown',
+              country: scan.location?.country || 'Unknown'
+            },
+            device: scan.device || (scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop'),
+            scanType: scan.scanType || 'Unknown'
+          });
+        }
+
+        // Location breakdown
+        const country = scan.location?.country || 'Unknown';
+        analytics.locationBreakdown[country] = (analytics.locationBreakdown[country] || 0) + 1;
+
+        // Device breakdown
+        const device = scan.device || (scan.userAgent?.includes('Mobile') ? 'Mobile' : 'Desktop');
+        analytics.deviceBreakdown[device] = (analytics.deviceBreakdown[device] || 0) + 1;
+
+        // Time breakdown
+        const scanDate = new Date(scan.scanDate);
+        analytics.timeBreakdown.hourly[scanDate.getHours()]++;
+        analytics.timeBreakdown.daily[scanDate.getDay()]++;
+        analytics.timeBreakdown.monthly[scanDate.getMonth()]++;
+      }
+    }
+
+    // Sort recent scans by date
+    analytics.recentScans.sort((a, b) => new Date(b.scanDate) - new Date(a.scanDate));
 
     res.json(analytics);
   } catch (error) {
