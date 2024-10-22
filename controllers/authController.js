@@ -32,25 +32,6 @@
 
 
 
-// const uploadImage = async (file) => {
-//   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-//   const maxSize = 5 * 1024 * 1024; // 5MB
-
-//   if (!allowedTypes.includes(file.mimetype)) {
-//     throw new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed.');
-//   }
-
-//   if (file.size > maxSize) {
-//     throw new Error('File size exceeds the 5MB limit.');
-//   }
-
-//   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}_${file.name}`;
-//   const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
-
-//   await file.mv(filePath);
-//   return `/uploads/${fileName}`;
-// };
-
 const uploadImage = async (file) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
   const maxSize = 5 * 1024 * 1024; // 5MB
@@ -77,18 +58,11 @@ const uploadImage = async (file) => {
 };
 
 
-
-
-
-
-
 async function generateQRCode(vCardData) {
   const vCardString = generateVCardString(vCardData);
   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
   return { qrCodeDataUrl, vCardString };
 }
-
-
 
 async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
   try {
@@ -104,16 +78,7 @@ async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
+// ... existing code ...
 
 exports.getVCards = async (req, res) => {
   try {
@@ -124,7 +89,10 @@ exports.getVCards = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(user.vCards || []);
+    res.json({
+      vCards: user.vCards || [],
+      count: user.vCards.length
+    });
   } catch (error) {
     console.error('Error fetching vCards:', error);
     res.status(500).json({ error: 'Failed to fetch vCards' });
@@ -132,7 +100,30 @@ exports.getVCards = async (req, res) => {
 };
 
 
+exports.deleteVCard = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const userId = req.user.userId;
 
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
+    if (vCardIndex === -1) {
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    user.vCards.splice(vCardIndex, 1);
+    await user.save();
+
+    res.json({ message: 'vCard deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting vCard:', error);
+    res.status(500).json({ error: 'Error deleting vCard', details: error.message });
+  }
+};
 
 exports.getVCard = async (req, res) => {
   try {
@@ -164,10 +155,6 @@ exports.getVCard = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.getPublicVCard = async (req, res) => {
   try {
     const { id } = req.params;
@@ -198,11 +185,6 @@ exports.getPublicVCard = async (req, res) => {
   }
 };
 
-
-
-
-
-
 function generateVCardString(vCardData) {
   let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
   const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
@@ -225,69 +207,11 @@ function generateVCardString(vCardData) {
   return vCard;
 }
 
-
-
-
-
 async function generateQRCode(vCardData) {
   const vCardString = generateVCardString(vCardData);
   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
   return { qrCodeDataUrl, vCardString };
 }
-
-
-
-// exports.createVCard = async (req, res) => {
-//   try {
-//     const { userId } = req.user;
-//     const { templateId, fields } = JSON.parse(req.body.data);
-
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-
-//     const newVCard = {
-//       templateId,
-//       fields
-//     };
-
-//     // Handle file upload if present
-//     if (req.files && req.files.profileImage) {
-//       try {
-//         const imagePath = await uploadImage(req.files.profileImage);
-//         newVCard.fields.push({ name: 'profileImage', value: imagePath });
-//       } catch (uploadError) {
-//         return res.status(400).json({ error: uploadError.message });
-//       }
-//     }
-
-//     const { qrCodeDataUrl, vCardString } = await generateQRCode(newVCard);
-    
-//     const vCardId = new mongoose.Types.ObjectId();
-//     user.vCards.push({
-//       _id: vCardId,
-//       ...newVCard,
-//       qrCode: qrCodeDataUrl,
-//       vCardString: vCardString
-//     });
-
-//     await user.save();
-
-//     res.status(201).json({
-//       message: 'vCard created successfully',
-//       vCardId: vCardId.toString(),
-//       qrCodeDataUrl: qrCodeDataUrl,
-//       vCardString: vCardString,
-//       previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId.toString()}`
-//     });
-//   } catch (error) {
-//     console.error('Error creating vCard:', error);
-//     res.status(500).json({ error: 'Error creating vCard', details: error.message });
-//   }
-// };
-
-
 
 exports.createVCard = async (req, res) => {
   try {
@@ -339,72 +263,28 @@ exports.createVCard = async (req, res) => {
   }
 };
 
-
-
-
-// exports.updateVCard = async (req, res) => {
-//   try {
-//     const { userId } = req.user;
-//     const { vCardId } = req.params;
-//     let { templateId, fields } = JSON.parse(req.body.data);
-
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-
-//     const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
-//     if (vCardIndex === -1) {
-//       return res.status(404).json({ error: 'vCard not found' });
-//     }
-
-//     // Handle file upload if present
-//     if (req.files && req.files.profileImage) {
-//       try {
-//         const imagePath = await uploadImage(req.files.profileImage);
-        
-//         // Remove old image file if it exists
-//         const oldImageField = fields.find(field => field.name === 'profileImage');
-//         if (oldImageField) {
-//           const oldImagePath = path.join(__dirname, '..', 'public', oldImageField.value);
-//           await fs.unlink(oldImagePath).catch(() => {}); // Ignore errors if file doesn't exist
-//         }
-
-//         fields = fields.filter(field => field.name !== 'profileImage');
-//         fields.push({ name: 'profileImage', value: imagePath });
-//       } catch (uploadError) {
-//         return res.status(400).json({ error: uploadError.message });
-//       }
-//     }
-
-//     user.vCards[vCardIndex].templateId = templateId;
-//     user.vCards[vCardIndex].fields = fields;
-
-//     const { qrCodeDataUrl, vCardString } = await generateQRCode(user.vCards[vCardIndex]);
-//     user.vCards[vCardIndex].qrCode = qrCodeDataUrl;
-//     user.vCards[vCardIndex].vCardString = vCardString;
-
-//     await user.save();
-
-//     res.json({
-//       message: 'vCard updated successfully',
-//       qrCodeDataUrl: qrCodeDataUrl,
-//       vCardString: vCardString,
-//       previewLink: `${process.env.FRONTEND_URL}/preview?vCardId=${vCardId}`
-//     });
-//   } catch (error) {
-//     console.error('Error updating vCard:', error);
-//     res.status(500).json({ error: 'Error updating vCard', details: error.message });
-//   }
-// };
-
-
-
 exports.updateVCard = async (req, res) => {
   try {
     const { userId } = req.user;
     const { vCardId } = req.params;
-    let { templateId, fields } = JSON.parse(req.body.data);
+    
+    console.log('Received request body:', req.body);
+    
+    let templateId, fields;
+    
+    if (typeof req.body === 'object' && req.body !== null) {
+      // If the body is already an object, use it directly
+      ({ templateId, fields } = req.body);
+    } else if (typeof req.body.data === 'string') {
+      // If the data is a string, parse it
+      ({ templateId, fields } = JSON.parse(req.body.data));
+    } else {
+      throw new Error('Invalid request body format');
+    }
+
+    if (!templateId || !fields) {
+      throw new Error('Missing required fields');
+    }
 
     const user = await User.findById(userId);
     if (!user) {
@@ -456,73 +336,6 @@ exports.updateVCard = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// exports.uploadChunk = async (req, res) => {
-//   if (!req.files || Object.keys(req.files).length === 0) {
-//     return res.status(400).send('No files were uploaded.');
-//   }
-
-//   const { chunk } = req.files;
-//   const { fileName, chunkIndex, totalChunks } = req.body;
-
-//   const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
-//   const chunkDir = path.join(uploadDir, fileName);
-//   await fs.ensureDir(chunkDir);
-
-//   const chunkPath = path.join(chunkDir, `chunk_${chunkIndex}`);
-  
-//   try {
-//     await chunk.mv(chunkPath);
-    
-//     if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
-//       // All chunks received, start reassembly
-//       const finalPath = path.join(uploadDir, fileName);
-//       const writeStream = fs.createWriteStream(finalPath);
-//       for (let i = 0; i < totalChunks; i++) {
-//         const chunkData = await fs.readFile(path.join(chunkDir, `chunk_${i}`));
-//         writeStream.write(chunkData);
-//       }
-//       writeStream.end();
-
-//       // Clean up chunk files
-//       await fs.remove(chunkDir);
-
-//       res.send({ message: 'File upload completed', filePath: `/uploads/${fileName}` });
-//     } else {
-//       res.send('Chunk received');
-//     }
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).send(err);
-//   }
-// };
-
-
-
-
 exports.uploadChunk = async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -572,8 +385,6 @@ exports.uploadChunk = async (req, res) => {
   }
 };
 
-
-
 exports.getPublicVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -605,10 +416,6 @@ exports.getPublicVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
-
-
-
-
 
 exports.getVCardPreview = async (req, res) => {
   try {
@@ -715,10 +522,6 @@ exports.getVCardPreview = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -782,8 +585,6 @@ exports.handleScan = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error handling scan' });
   }
 };
-
-
 
 // Update the getVCardAnalytics function
 exports.getVCardAnalytics = async (req, res) => {
@@ -857,24 +658,11 @@ exports.getVCardAnalytics = async (req, res) => {
   }
 };
 
-
-
-
-
 exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
   res.status(501).json({ message: 'QR scan functionality not implemented yet' });
 };
-
-
-
-
-
-
-
-
-
 
 exports.getVCardScanAnalytics = async (req, res) => {
   try {
@@ -924,8 +712,6 @@ exports.getVCardScanAnalytics = async (req, res) => {
   }
 };
 
-
-
 exports.getUserScanAnalytics = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -967,7 +753,6 @@ exports.getUserScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user scan analytics' });
   }
 };
-
 
 exports.recordTimeSpent = async (req, res) => {
   try {
@@ -1018,11 +803,6 @@ exports.recordTimeSpent = async (req, res) => {
 // -----------------------------------------------------------------------------------
 
 
-
-
-
-
-
 exports.register = async (req, res) => {
   try {
     console.log('Register request body:', req.body);
@@ -1065,7 +845,6 @@ exports.register = async (req, res) => {
   }
 };
 
-
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1099,9 +878,6 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error logging in' });
   }
 };
-
-
-
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -1289,8 +1065,6 @@ exports.resendVerification = async (req, res) => {
     res.status(500).json({ error: 'Failed to resend verification email' });
   }
 };
-
-
 
 
 exports.testGeolocation = async (req, res) => {

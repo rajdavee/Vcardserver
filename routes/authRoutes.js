@@ -26,7 +26,8 @@ const {
   getVCardPreview,
   handleScan,
   testGeolocation,
-  recordTimeSpent
+  recordTimeSpent,
+  deleteVCard
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -57,6 +58,8 @@ router.get('/user-analytics', authenticateJWT, getUserScanAnalytics);
 router.get('/vcard-preview/:vCardId', getVCardPreview);
 
 router.post('/scan/:vCardId', handleScan);
+
+router.delete('/vcard/:vCardId', authenticateJWT, deleteVCard);
 
 
 router.get('/test-geolocation', testGeolocation);
