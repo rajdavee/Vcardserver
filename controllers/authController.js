@@ -13,7 +13,8 @@
   const axios = require('axios');
   const mongoose = require('mongoose');
   const cloudinary = require('../config/cloudinaryConfig');
-  const geoip = require('geoip-lite');
+  const { getLocationData } = require('../utils/geolocation');
+
 
 
 
@@ -609,99 +610,51 @@ exports.getPublicVCardPreview = async (req, res) => {
   }
 };
 
+
+
+
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
-    const userAgent = req.headers['user-agent'];
-
-    console.log(`Handling preview for vCardId: ${vCardId}`);
-    console.log('IP Address:', ip);
-    console.log('User Agent:', userAgent);
+    const ip = req.headers['x-forwarded-for'] || 
+               req.connection.remoteAddress || 
+               req.socket.remoteAddress ||
+               (req.connection.socket ? req.connection.socket.remoteAddress : null);
 
     const user = await User.findOne({ 'vCards._id': vCardId });
-
     if (!user) {
-      console.log(`vCard not found for id: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found' });
     }
 
     const vCard = user.vCards.id(vCardId);
-
     if (!vCard) {
-      console.log(`vCard not found in user document for id: ${vCardId}`);
-      return res.status(404).json({ error: 'vCard not found in user document' });
+      return res.status(404).json({ error: 'vCard not found' });
     }
 
-    // Check if a scan from this IP for this vCard already exists within the last 24 hours
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Record the preview access
     let vCardScan = await VCardScan.findOne({ vCardId });
-
-    if (vCardScan) {
-      const existingScan = vCardScan.scans.find(scan => 
-        scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
-      );
-
-      if (existingScan) {
-        console.log('Recent scan found, updating existing record');
-        existingScan.scanDate = new Date();
-        await vCardScan.save();
-      } else {
-        console.log('Creating new scan record');
-        let location;
-        try {
-          const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-          location = ipApiResponse.data;
-          console.log('Location data:', location);
-        } catch (error) {
-          console.error('Error fetching location data:', error);
-          location = null;
-        }
-
-        const scanData = {
-          ipAddress: ip,
-          userAgent,
-          scanDate: new Date(),
-          location: location && location.status === 'success' ? {
-            latitude: location.lat,
-            longitude: location.lon,
-            city: location.city,
-            country: location.country,
-          } : null,
-        };
-
-        vCardScan.scans.push(scanData);
-        await vCardScan.save();
-      }
-    } else {
-      console.log('Creating new VCardScan document');
-      let location;
-      try {
-        const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-        location = ipApiResponse.data;
-        console.log('Location data:', location);
-      } catch (error) {
-        console.error('Error fetching location data:', error);
-        location = null;
-      }
-
-      const scanData = {
-        ipAddress: ip,
-        userAgent,
-        scanDate: new Date(),
-        location: location && location.status === 'success' ? {
-          latitude: location.lat,
-          longitude: location.lon,
-          city: location.city,
-          country: location.country,
-        } : null,
-      };
-
-      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
-      await vCardScan.save();
+    if (!vCardScan) {
+      vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    console.log('Preview scan recorded or updated successfully');
+    const userAgent = req.headers['user-agent'];
+    const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    const device = isMobile ? 'Mobile' : 'Desktop';
+
+    const locationData = await getLocationData(ip);
+
+    const scanData = {
+      ipAddress: ip,
+      userAgent,
+      scanDate: new Date(),
+      location: locationData,
+      device,
+      scanType: 'Preview'
+    };
+
+    vCardScan.scans.push(scanData);
+    vCardScan.previewClicks++;
+    await vCardScan.save();
 
     res.json({
       templateId: vCard.templateId,
@@ -709,10 +662,15 @@ exports.getVCardPreview = async (req, res) => {
       qrCodeDataUrl: vCard.qrCode
     });
   } catch (error) {
-    console.error('Error fetching vCard preview:', error);
-    res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
+    console.error('Error getting vCard preview:', error);
+    res.status(500).json({ error: 'Error getting vCard preview' });
   }
 };
+
+
+
+
+
 
 
 exports.createVCard = async (req, res) => {
@@ -1110,28 +1068,10 @@ exports.handleScan = async (req, res) => {
       vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    // Improved device detection
     const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
     const device = isMobile ? 'Mobile' : 'Desktop';
 
-    // Use geoip-lite for location detection
-    const geo = geoip.lookup(ip);
-    
-    let locationData = {
-      latitude: null,
-      longitude: null,
-      city: 'Unknown',
-      country: 'Unknown'
-    };
-
-    if (geo) {
-      locationData = {
-        latitude: geo.ll[0],
-        longitude: geo.ll[1],
-        city: geo.city || 'Unknown',
-        country: geo.country || 'Unknown'
-      };
-    }
+    const locationData = await getLocationData(ip);
 
     const scanData = {
       ipAddress: ip,
@@ -1144,7 +1084,6 @@ exports.handleScan = async (req, res) => {
 
     vCardScan.scans.push(scanData);
 
-    // Update the appropriate counter
     if (scanType === 'QR') {
       vCardScan.qrScans++;
     } else if (scanType === 'Link') {
@@ -1162,6 +1101,11 @@ exports.handleScan = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error handling scan' });
   }
 };
+
+
+
+
+
 
 exports.getVCardAnalytics = async (req, res) => {
   try {
@@ -1431,41 +1375,30 @@ exports.recordTimeSpent = async (req, res) => {
 // -----------------------------------------------------------------------------------
 
 
-
 exports.testGeolocation = async (req, res) => {
   try {
     const testIp = req.query.ip || '8.8.8.8'; // Use Google's public DNS as a default test IP
     console.log(`Testing geolocation for IP: ${testIp}`);
 
-    const ipApiResponse = await axios.get(`http://ip-api.com/json/${testIp}`);
-    const location = ipApiResponse.data;
+    const locationData = await getLocationData(testIp);
 
-    console.log('Full ip-api.com response:', JSON.stringify(location, null, 2));
-
-    if (location.status === 'success') {
-      res.json({
-        success: true,
-        message: 'Geolocation data retrieved successfully',
-        data: {
-          ip: testIp,
-          city: location.city,
-          country: location.country,
-          latitude: location.lat,
-          longitude: location.lon,
-        }
-      });
-    } else {
-      res.json({
-        success: false,
-        message: 'Failed to retrieve geolocation data',
-        data: location
-      });
-    }
+    res.json({
+      success: true,
+      message: 'Geolocation data retrieved successfully',
+      data: {
+        ip: testIp,
+        ...locationData
+      }
+    });
   } catch (error) {
     console.error('Error testing geolocation:', error);
     res.status(500).json({ success: false, error: 'Error testing geolocation' });
   }
 };
+
+
+
+
 exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
