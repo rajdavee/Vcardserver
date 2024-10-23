@@ -19,64 +19,6 @@
   
 
 
-
-  exports.testUserIpDetection = async (req, res) => {
-    try {
-      const clientIp = requestIp.getClientIp(req);
-      
-      console.log(`Detected client IP: ${clientIp}`);
-  
-      // Use the detected IP to fetch location data
-      const response = await axios.get(`https://ipapi.co/${clientIp}/json/`);
-      const locationData = response.data;
-  
-      if (locationData.error) {
-        throw new Error(locationData.reason || 'Error fetching location data');
-      }
-  
-      res.json({
-        success: true,
-        message: `Your IP address is ${clientIp}`,
-        ipAddress: clientIp,
-        location: {
-          city: locationData.city,
-          region: locationData.region,
-          country: locationData.country_name,
-          latitude: locationData.latitude,
-          longitude: locationData.longitude
-        },
-        fullData: locationData
-      });
-    } catch (error) {
-      console.error('Error in user IP detection service:', error);
-      res.status(500).json({ success: false, error: 'Error detecting user IP or fetching location data' });
-    }
-  };
-
-
-
-  exports.testLocationSpecificService = async (req, res) => {
-    try {
-      const ip = req.query.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-      console.log(`Testing location specific service for IP: ${ip}`);
-  
-      const response = await axios.get(`https://ipapi.co/${ip}/json/`);
-      const fetchData = response.data;
-  
-      if (fetchData.error) {
-        throw new Error(fetchData.reason || 'Error fetching location data');
-      }
-  
-      res.json({
-        success: true,
-        message: `You are from ${fetchData.region}, ${fetchData.country_name}`,
-        data: fetchData
-      });
-    } catch (error) {
-      console.error('Error in location specific service:', error);
-      res.status(500).json({ success: false, error: 'Error fetching location data' });
-    }
-  };
   
 
 
@@ -1111,61 +1053,91 @@ exports.getPublicVCard = async (req, res) => {
 
 
 
+async function getIpAndLocationData(req) {
+  try {
+    const clientIp = requestIp.getClientIp(req);
+    console.log(`Detected client IP: ${clientIp}`);
+
+    // Use a fallback IP if the detected IP is a local address
+    const ipToUse = clientIp === '::1' || clientIp === '127.0.0.1' 
+      ? '8.8.8.8'  // Google's public DNS as a fallback
+      : clientIp;
+
+    const response = await axios.get(`https://ipapi.co/${ipToUse}/json/`);
+    const locationData = response.data;
+
+    if (locationData.error) {
+      throw new Error(locationData.reason || 'Error fetching location data');
+    }
+
+    return {
+      ipAddress: clientIp,
+      location: {
+        city: locationData.city,
+        region: locationData.region,
+        country: locationData.country_name,
+        latitude: locationData.latitude,
+        longitude: locationData.longitude
+      },
+      fullData: locationData
+    };
+  } catch (error) {
+    console.error('Error in IP detection and location service:', error);
+    throw error;
+  }
+}
+
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const { scanType = 'QR' } = req.query;
-    const ip = req.headers['x-forwarded-for'] || 
-               req.connection.remoteAddress || 
-               req.socket.remoteAddress ||
-               (req.connection.socket ? req.connection.socket.remoteAddress : null);
     const userAgent = req.headers['user-agent'];
 
-    console.log(`Handling ${scanType} scan for vCardId: ${vCardId}`);
-    console.log('IP Address:', ip);
-    console.log('User Agent:', userAgent);
+    // Use the new combined function
+    const { ipAddress, location, fullData } = await getIpAndLocationData(req);
 
+    // Determine device type
+    const isMobile = /mobile/i.test(userAgent);
+    const device = isMobile ? 'Mobile' : 'Desktop';
+
+    // Find or create VCardScan document
     let vCardScan = await VCardScan.findOne({ vCardId });
-
     if (!vCardScan) {
       vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    const device = isMobile ? 'Mobile' : 'Desktop';
-
-    const locationData = await getLocationData(ip);
-
-    const scanData = {
-      ipAddress: ip,
+    // Create new scan entry
+    const newScan = {
+      ipAddress,
       userAgent,
-      scanDate: new Date(),
-      location: locationData,
+      location,
       device,
-      scanType
+      scanType: req.query.scanType || 'QR' // Default to 'QR' if not specified
     };
 
-    vCardScan.scans.push(scanData);
+    // Add the new scan to the scans array
+    vCardScan.scans.push(newScan);
 
-    if (scanType === 'QR') {
-      vCardScan.qrScans++;
-    } else if (scanType === 'Link') {
-      vCardScan.linkClicks++;
-    } else if (scanType === 'Preview') {
-      vCardScan.previewClicks++;
+    // Increment the appropriate counter
+    switch (newScan.scanType) {
+      case 'QR':
+        vCardScan.qrScans += 1;
+        break;
+      case 'Link':
+        vCardScan.linkClicks += 1;
+        break;
+      case 'Preview':
+        vCardScan.previewClicks += 1;
+        break;
     }
 
     await vCardScan.save();
 
-    console.log('Scan recorded successfully');
-    res.status(200).json({ success: true, message: 'Scan recorded successfully' });
+    res.status(200).json({ message: 'Scan recorded successfully', scanId: newScan._id });
   } catch (error) {
     console.error('Error handling scan:', error);
-    res.status(500).json({ success: false, error: 'Error handling scan' });
+    res.status(500).json({ error: 'Failed to record scan', details: error.message });
   }
 };
-
-
 
 
 
@@ -1466,6 +1438,67 @@ exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
   res.status(501).json({ message: 'QR scan functionality not implemented yet' });
+};
+
+
+
+
+exports.testUserIpDetection = async (req, res) => {
+  try {
+    const clientIp = requestIp.getClientIp(req);
+    
+    console.log(`Detected client IP: ${clientIp}`);
+
+    // Use the detected IP to fetch location data
+    const response = await axios.get(`https://ipapi.co/${clientIp}/json/`);
+    const locationData = response.data;
+
+    if (locationData.error) {
+      throw new Error(locationData.reason || 'Error fetching location data');
+    }
+
+    res.json({
+      success: true,
+      message: `Your IP address is ${clientIp}`,
+      ipAddress: clientIp,
+      location: {
+        city: locationData.city,
+        region: locationData.region,
+        country: locationData.country_name,
+        latitude: locationData.latitude,
+        longitude: locationData.longitude
+      },
+      fullData: locationData
+    });
+  } catch (error) {
+    console.error('Error in user IP detection service:', error);
+    res.status(500).json({ success: false, error: 'Error detecting user IP or fetching location data' });
+  }
+};
+
+
+
+exports.testLocationSpecificService = async (req, res) => {
+  try {
+    const ip = req.query.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    console.log(`Testing location specific service for IP: ${ip}`);
+
+    const response = await axios.get(`https://ipapi.co/${ip}/json/`);
+    const fetchData = response.data;
+
+    if (fetchData.error) {
+      throw new Error(fetchData.reason || 'Error fetching location data');
+    }
+
+    res.json({
+      success: true,
+      message: `You are from ${fetchData.region}, ${fetchData.country_name}`,
+      data: fetchData
+    });
+  } catch (error) {
+    console.error('Error in location specific service:', error);
+    res.status(500).json({ success: false, error: 'Error fetching location data' });
+  }
 };
 
 
