@@ -618,48 +618,80 @@ exports.getPublicVCardPreview = async (req, res) => {
 
 
 
+// exports.getVCardPreview = async (req, res) => {
+//   try {
+//     const { vCardId } = req.params;
+//     const ip = req.headers['x-forwarded-for'] || 
+//                req.connection.remoteAddress || 
+//                req.socket.remoteAddress ||
+//                (req.connection.socket ? req.connection.socket.remoteAddress : null);
+
+//     const user = await User.findOne({ 'vCards._id': vCardId });
+//     if (!user) {
+//       return res.status(404).json({ error: 'vCard not found' });
+//     }
+
+//     const vCard = user.vCards.id(vCardId);
+//     if (!vCard) {
+//       return res.status(404).json({ error: 'vCard not found' });
+//     }
+
+//     // Record the preview access
+//     let vCardScan = await VCardScan.findOne({ vCardId });
+//     if (!vCardScan) {
+//       vCardScan = new VCardScan({ vCardId, scans: [] });
+//     }
+
+//     const userAgent = req.headers['user-agent'];
+//     const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+//     const device = isMobile ? 'Mobile' : 'Desktop';
+
+//     const locationData = await getLocationData(ip);
+
+//     const scanData = {
+//       ipAddress: ip,
+//       userAgent,
+//       scanDate: new Date(),
+//       location: locationData,
+//       device,
+//       scanType: 'Preview'
+//     };
+
+//     vCardScan.scans.push(scanData);
+//     vCardScan.previewClicks++;
+//     await vCardScan.save();
+
+//     res.json({
+//       templateId: vCard.templateId,
+//       fields: vCard.fields,
+//       qrCodeDataUrl: vCard.qrCode
+//     });
+//   } catch (error) {
+//     console.error('Error getting vCard preview:', error);
+//     res.status(500).json({ error: 'Error getting vCard preview' });
+//   }
+// };
+
+
+
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = req.headers['x-forwarded-for'] || 
-               req.connection.remoteAddress || 
-               req.socket.remoteAddress ||
-               (req.connection.socket ? req.connection.socket.remoteAddress : null);
+    console.log(`Fetching vCard preview for id: ${vCardId}`);
 
     const user = await User.findOne({ 'vCards._id': vCardId });
     if (!user) {
+      console.log(`vCard not found for id: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found' });
     }
 
     const vCard = user.vCards.id(vCardId);
     if (!vCard) {
+      console.log(`vCard not found in user document for id: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found' });
     }
 
-    // Record the preview access
-    let vCardScan = await VCardScan.findOne({ vCardId });
-    if (!vCardScan) {
-      vCardScan = new VCardScan({ vCardId, scans: [] });
-    }
-
-    const userAgent = req.headers['user-agent'];
-    const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    const device = isMobile ? 'Mobile' : 'Desktop';
-
-    const locationData = await getLocationData(ip);
-
-    const scanData = {
-      ipAddress: ip,
-      userAgent,
-      scanDate: new Date(),
-      location: locationData,
-      device,
-      scanType: 'Preview'
-    };
-
-    vCardScan.scans.push(scanData);
-    vCardScan.previewClicks++;
-    await vCardScan.save();
+    console.log(`Successfully fetched vCard for preview: ${JSON.stringify(vCard)}`);
 
     res.json({
       templateId: vCard.templateId,
