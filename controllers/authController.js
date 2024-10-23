@@ -14,7 +14,70 @@
   const mongoose = require('mongoose');
   const cloudinary = require('../config/cloudinaryConfig');
   const { getLocationData } = require('../utils/geolocation');
+  const fetch = require('node-fetch');
+  const requestIp = require('request-ip');
+  
 
+
+
+  exports.testUserIpDetection = async (req, res) => {
+    try {
+      const clientIp = requestIp.getClientIp(req);
+      
+      console.log(`Detected client IP: ${clientIp}`);
+  
+      // Use the detected IP to fetch location data
+      const response = await axios.get(`https://ipapi.co/${clientIp}/json/`);
+      const locationData = response.data;
+  
+      if (locationData.error) {
+        throw new Error(locationData.reason || 'Error fetching location data');
+      }
+  
+      res.json({
+        success: true,
+        message: `Your IP address is ${clientIp}`,
+        ipAddress: clientIp,
+        location: {
+          city: locationData.city,
+          region: locationData.region,
+          country: locationData.country_name,
+          latitude: locationData.latitude,
+          longitude: locationData.longitude
+        },
+        fullData: locationData
+      });
+    } catch (error) {
+      console.error('Error in user IP detection service:', error);
+      res.status(500).json({ success: false, error: 'Error detecting user IP or fetching location data' });
+    }
+  };
+
+
+
+  exports.testLocationSpecificService = async (req, res) => {
+    try {
+      const ip = req.query.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      console.log(`Testing location specific service for IP: ${ip}`);
+  
+      const response = await axios.get(`https://ipapi.co/${ip}/json/`);
+      const fetchData = response.data;
+  
+      if (fetchData.error) {
+        throw new Error(fetchData.reason || 'Error fetching location data');
+      }
+  
+      res.json({
+        success: true,
+        message: `You are from ${fetchData.region}, ${fetchData.country_name}`,
+        data: fetchData
+      });
+    } catch (error) {
+      console.error('Error in location specific service:', error);
+      res.status(500).json({ success: false, error: 'Error fetching location data' });
+    }
+  };
+  
 
 
 

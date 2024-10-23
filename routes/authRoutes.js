@@ -27,7 +27,9 @@ const {
   handleScan,
   testGeolocation,
   recordTimeSpent,
-  deleteVCard
+  deleteVCard,
+  testLocationSpecificService,
+  testUserIpDetection
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -69,4 +71,8 @@ router.post('/scan/:vCardId/time-spent', recordTimeSpent);
 
 router.get('/vcard-analytics/:vCardId', authenticateJWT, analyticsController.getVCardAnalytics);
 
+
+router.get('/test-location-service', testLocationSpecificService);
+
+router.get('/test-user-ip', testUserIpDetection);
 module.exports = router;
