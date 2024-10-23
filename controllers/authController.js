@@ -1119,12 +1119,69 @@ async function getIpAndLocationData(req) {
   }
 }
 
+// exports.handleScan = async (req, res) => {
+//   try {
+//     const { vCardId } = req.params;
+//     const userAgent = req.headers['user-agent'];
+
+//     // Use the new combined function
+//     const { ipAddress, location, fullData } = await getIpAndLocationData(req);
+
+//     // Determine device type
+//     const isMobile = /mobile/i.test(userAgent);
+//     const device = isMobile ? 'Mobile' : 'Desktop';
+
+//     // Find or create VCardScan document
+//     let vCardScan = await VCardScan.findOne({ vCardId });
+//     if (!vCardScan) {
+//       vCardScan = new VCardScan({ vCardId, scans: [] });
+//     }
+
+//     // Create new scan entry
+//     const newScan = {
+//       ipAddress,
+//       userAgent,
+//       location,
+//       device,
+//       scanType: req.query.scanType || 'QR' // Default to 'QR' if not specified
+//     };
+
+//     // Add the new scan to the scans array
+//     vCardScan.scans.push(newScan);
+
+//     // Increment the appropriate counter
+//     switch (newScan.scanType) {
+//       case 'QR':
+//         vCardScan.qrScans += 1;
+//         break;
+//       case 'Link':
+//         vCardScan.linkClicks += 1;
+//         break;
+//       case 'Preview':
+//         vCardScan.previewClicks += 1;
+//         break;
+//     }
+
+//     await vCardScan.save();
+
+//     res.status(200).json({ message: 'Scan recorded successfully', scanId: newScan._id });
+//   } catch (error) {
+//     console.error('Error handling scan:', error);
+//     res.status(500).json({ error: 'Failed to record scan', details: error.message });
+//   }
+// };
+
+
+
+
+
+
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
     const userAgent = req.headers['user-agent'];
 
-    // Use the new combined function
+    // Use the combined function to get IP and location data
     const { ipAddress, location, fullData } = await getIpAndLocationData(req);
 
     // Determine device type
@@ -1137,40 +1194,76 @@ exports.handleScan = async (req, res) => {
       vCardScan = new VCardScan({ vCardId, scans: [] });
     }
 
-    // Create new scan entry
-    const newScan = {
-      ipAddress,
-      userAgent,
-      location,
-      device,
-      scanType: req.query.scanType || 'QR' // Default to 'QR' if not specified
-    };
+    // Check if this IP has already been recorded
+    const existingScan = vCardScan.scans.find(scan => scan.ipAddress === ipAddress);
 
-    // Add the new scan to the scans array
-    vCardScan.scans.push(newScan);
+    if (!existingScan) {
+      // This is a new unique IP
+      const newScan = {
+        ipAddress,
+        userAgent,
+        scanDate: new Date(),
+        location: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          city: location.city,
+          country: location.country
+        },
+        device,
+        scanType: req.query.scanType || 'QR' // Default to 'QR' if not specified
+      };
 
-    // Increment the appropriate counter
-    switch (newScan.scanType) {
-      case 'QR':
-        vCardScan.qrScans += 1;
-        break;
-      case 'Link':
-        vCardScan.linkClicks += 1;
-        break;
-      case 'Preview':
-        vCardScan.previewClicks += 1;
-        break;
+      // Add the new scan to the scans array
+      vCardScan.scans.push(newScan);
+
+      // Increment the appropriate counter
+      switch (newScan.scanType) {
+        case 'QR':
+          vCardScan.qrScans += 1;
+          break;
+        case 'Link':
+          vCardScan.linkClicks += 1;
+          break;
+        case 'Preview':
+          vCardScan.previewClicks += 1;
+          break;
+      }
+
+      await vCardScan.save();
+
+      res.status(200).json({ 
+        message: 'New unique scan recorded successfully', 
+        scanId: newScan._id,
+        isNewScan: true
+      });
+    } else {
+      // This IP has already been recorded
+      // Update the last scan date for this IP
+      existingScan.scanDate = new Date();
+      await vCardScan.save();
+
+      res.status(200).json({ 
+        message: 'Scan from this IP already recorded', 
+        isNewScan: false
+      });
     }
 
-    await vCardScan.save();
+    // Optionally, update the lastAccessed field of the vCard
+    // You'll need to ensure this field exists in your User model
+    const user = await User.findOne({ 'vCards._id': vCardId });
+    if (user) {
+      const vCard = user.vCards.id(vCardId);
+      if (vCard) {
+        vCard.lastAccessed = new Date();
+        await user.save();
+      }
+    }
 
-    res.status(200).json({ message: 'Scan recorded successfully', scanId: newScan._id });
   } catch (error) {
     console.error('Error handling scan:', error);
     res.status(500).json({ error: 'Failed to record scan', details: error.message });
   }
 };
-
 
 
 
