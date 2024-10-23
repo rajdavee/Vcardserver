@@ -16,22 +16,11 @@
 
 
 
-
-
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
-// ----------------------------{ Vcards functions }-------------------------------------
+// ----------------------------{  Helper functions }-------------------------------------
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
-
-
-
-
-
-
 const uploadImage = async (file) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
   const maxSize = 5 * 1024 * 1024; // 5MB
@@ -57,13 +46,11 @@ const uploadImage = async (file) => {
   }
 };
 
-
 async function generateQRCode(vCardData) {
   const vCardString = generateVCardString(vCardData);
   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
   return { qrCodeDataUrl, vCardString };
 }
-
 async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
   try {
     const scanUrl = `${process.env.FRONTEND_URL}/api/scan/${vCardId}`;
@@ -76,115 +63,6 @@ async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
     throw error;
   }
 }
-
-
-// ... existing code ...
-
-exports.getVCards = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const user = await User.findById(userId).select('vCards');
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    res.json({
-      vCards: user.vCards || [],
-      count: user.vCards.length
-    });
-  } catch (error) {
-    console.error('Error fetching vCards:', error);
-    res.status(500).json({ error: 'Failed to fetch vCards' });
-  }
-};
-
-
-exports.deleteVCard = async (req, res) => {
-  try {
-    const { vCardId } = req.params;
-    const userId = req.user.userId;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
-    if (vCardIndex === -1) {
-      return res.status(404).json({ error: 'vCard not found' });
-    }
-
-    user.vCards.splice(vCardIndex, 1);
-    await user.save();
-
-    res.json({ message: 'vCard deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting vCard:', error);
-    res.status(500).json({ error: 'Error deleting vCard', details: error.message });
-  }
-};
-
-exports.getVCard = async (req, res) => {
-  try {
-    const { vCardId } = req.params;
-    const userId = req.user.userId;
-    console.log(`Fetching vCard ${vCardId} for user ${userId}`);
-
-    const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
-    
-    if (!user) {
-      console.log(`User or vCard not found for userId: ${userId}, vCardId: ${vCardId}`);
-      return res.status(404).json({ error: 'vCard not found' });
-    }
-
-    const vCard = user.vCards.id(vCardId);
-    if (!vCard) {
-      console.log(`vCard not found in user document for vCardId: ${vCardId}`);
-      return res.status(404).json({ error: 'vCard not found in user document' });
-    }
-
-    console.log(`Successfully fetched vCard: ${JSON.stringify(vCard)}`);
-    res.json({
-      ...vCard.toObject(),
-      qrCodeDataUrl: vCard.qrCode
-    });
-  } catch (error) {
-    console.error('Error fetching vCard:', error);
-    res.status(500).json({ error: 'Error fetching vCard', details: error.message });
-  }
-};
-
-exports.getPublicVCard = async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`Fetching public vCard with id: ${id}`);
-    
-    const user = await User.findOne({ 'vCards._id': id });
-    
-    if (!user) {
-      console.log(`vCard not found for id: ${id}`);
-      return res.status(404).json({ error: 'vCard not found' });
-    }
-
-    const vCard = user.vCards.id(id);
-    
-    if (!vCard) {
-      console.log(`vCard not found in user document for id: ${id}`);
-      return res.status(404).json({ error: 'vCard not found' });
-    }
-
-    console.log(`Successfully fetched public vCard: ${JSON.stringify(vCard)}`);
-    res.json({
-      ...vCard.toObject(),
-      qrCodeDataUrl: vCard.qrCode
-    });
-  } catch (error) {
-    console.error('Error fetching public vCard:', error);
-    res.status(500).json({ error: 'Error fetching vCard' });
-  }
-};
-
 function generateVCardString(vCardData) {
   let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
   const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
@@ -212,6 +90,629 @@ async function generateQRCode(vCardData) {
   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
   return { qrCodeDataUrl, vCardString };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+// ----------------------------{  Auth functions }-------------------------------------
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+exports.register = async (req, res) => {
+  try {
+    console.log('Register request body:', req.body);
+    const { username, email, password } = req.body;
+    
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    // Create verification token
+    const verificationToken = crypto.randomBytes(20).toString('hex');
+    const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    user = new User({
+      username,
+      email,
+      password,
+      verificationToken,
+      verificationExpires,
+      isVerified: false
+    });
+    await user.save();
+
+    // Send verification email
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+    const message = `Please click on the following link to verify your email: ${verificationUrl}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Email Verification',
+      text: message,
+    });
+
+    res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+};
+
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user || !(await user.comparePassword(password))) {
+      return res.status(401).json({ error: 'Invalid credentials ' });
+    }
+
+    if (!user.isVerified) {
+      return res.status(403).json({ error: 'Please verify your email before logging in' });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Error logging in' });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    console.log('Forgot password request body:', req.body);
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // Token expires in 10 minutes
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    const message = `You are receiving this email because you (or someone else) have requested the reset of the password for your account.\n\nPlease click on the following link, or paste this into your browser to complete the process:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
+
+    console.log('Attempting to send email to:', user.email);
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Password Reset Request',
+        text: message,
+      });
+
+      res.status(200).json({ message: 'Password reset email sent' });
+    } catch (error) {
+      console.error('Send email error:', error);
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save();
+
+      return res.status(500).json({ error: 'Error sending password reset email' });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    console.log('Reset password request body:', req.body);
+    console.log('Reset password token from params:', req.params.token);
+    
+    const { token } = req.params;
+    const { password } = req.body;
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
+    }
+
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ message: 'Password has been reset' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Error resetting password' });
+  }
+};
+
+exports.checkVerificationStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('isVerified');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ isVerified: user.isVerified });
+  } catch (error) {
+    console.error('Check verification status error:', error);
+    res.status(500).json({ error: 'Error checking verification status' });
+  }
+};
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Email verified successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({ error: 'Email verification failed' });
+  }
+};
+
+exports.resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ error: 'Email already verified' });
+    }
+
+    // Check if a minute has passed since the last verification email
+    if (user.lastVerificationSent && Date.now() - user.lastVerificationSent < 60000) {
+      return res.status(400).json({ error: 'Please wait a minute before requesting a new verification email' });
+    }
+
+    // Create new verification token
+    user.verificationToken = crypto.randomBytes(20).toString('hex');
+    user.verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    user.lastVerificationSent = Date.now();
+    await user.save();
+
+    // Send verification email
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${user.verificationToken}`;
+    const message = `Please click on the following link to verify your email: ${verificationUrl}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Email Verification',
+      text: message,
+    });
+
+    res.json({ message: 'Verification email sent. Please check your inbox.' });
+  } catch (error) {
+    console.error('Resend verification error:', error);
+    res.status(500).json({ error: 'Failed to resend verification email' });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+// ----------------------------{  User functions }-------------------------------------
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ error: 'Error fetching user data' });
+  }
+};
+
+exports.getUserPlan = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('plan');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ planName: user.plan?.name || 'Free' });
+  } catch (error) {
+    console.error('Get user plan error:', error);
+    res.status(500).json({ error: 'Error fetching user plan' });
+  }
+};
+
+exports.getUserInfo = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('username email plan');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Get user info error:', error);
+    res.status(500).json({ error: 'Error fetching user info' });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+// ----------------------------{  vCard functions }-------------------------------------
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+
+exports.getPublicVCardPreview = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    console.log(`Fetching public vCard preview with id: ${vCardId}`);
+    
+    const user = await User.findOne({ 'vCards._id': vCardId });
+    
+    if (!user) {
+      console.log(`vCard not found for id: ${vCardId}`);
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    const vCard = user.vCards.id(vCardId);
+    
+    if (!vCard) {
+      console.log(`vCard not found in user document for id: ${vCardId}`);
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    console.log(`Successfully fetched public vCard for preview: ${JSON.stringify(vCard)}`);
+
+    // Send the vCard data as JSON without the QR code
+    res.json({
+      templateId: vCard.templateId,
+      fields: vCard.fields
+    });
+  } catch (error) {
+    console.error('Error fetching public vCard preview:', error);
+    res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
+  }
+};
+
+exports.getVCardPreview = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
+    const userAgent = req.headers['user-agent'];
+
+    console.log(`Handling preview for vCardId: ${vCardId}`);
+    console.log('IP Address:', ip);
+    console.log('User Agent:', userAgent);
+
+    const user = await User.findOne({ 'vCards._id': vCardId });
+
+    if (!user) {
+      console.log(`vCard not found for id: ${vCardId}`);
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    const vCard = user.vCards.id(vCardId);
+
+    if (!vCard) {
+      console.log(`vCard not found in user document for id: ${vCardId}`);
+      return res.status(404).json({ error: 'vCard not found in user document' });
+    }
+
+    // Check if a scan from this IP for this vCard already exists within the last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    let vCardScan = await VCardScan.findOne({ vCardId });
+
+    if (vCardScan) {
+      const existingScan = vCardScan.scans.find(scan => 
+        scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
+      );
+
+      if (existingScan) {
+        console.log('Recent scan found, updating existing record');
+        existingScan.scanDate = new Date();
+        await vCardScan.save();
+      } else {
+        console.log('Creating new scan record');
+        let location;
+        try {
+          const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+          location = ipApiResponse.data;
+          console.log('Location data:', location);
+        } catch (error) {
+          console.error('Error fetching location data:', error);
+          location = null;
+        }
+
+        const scanData = {
+          ipAddress: ip,
+          userAgent,
+          scanDate: new Date(),
+          location: location && location.status === 'success' ? {
+            latitude: location.lat,
+            longitude: location.lon,
+            city: location.city,
+            country: location.country,
+          } : null,
+        };
+
+        vCardScan.scans.push(scanData);
+        await vCardScan.save();
+      }
+    } else {
+      console.log('Creating new VCardScan document');
+      let location;
+      try {
+        const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+        location = ipApiResponse.data;
+        console.log('Location data:', location);
+      } catch (error) {
+        console.error('Error fetching location data:', error);
+        location = null;
+      }
+
+      const scanData = {
+        ipAddress: ip,
+        userAgent,
+        scanDate: new Date(),
+        location: location && location.status === 'success' ? {
+          latitude: location.lat,
+          longitude: location.lon,
+          city: location.city,
+          country: location.country,
+        } : null,
+      };
+
+      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
+      await vCardScan.save();
+    }
+
+    console.log('Preview scan recorded or updated successfully');
+
+    res.json({
+      templateId: vCard.templateId,
+      fields: vCard.fields,
+      qrCodeDataUrl: vCard.qrCode
+    });
+  } catch (error) {
+    console.error('Error fetching vCard preview:', error);
+    res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
+  }
+};
+
 
 exports.createVCard = async (req, res) => {
   try {
@@ -385,142 +886,208 @@ exports.uploadChunk = async (req, res) => {
   }
 };
 
-exports.getPublicVCardPreview = async (req, res) => {
+exports.getVCards = async (req, res) => {
   try {
-    const { vCardId } = req.params;
-    console.log(`Fetching public vCard preview with id: ${vCardId}`);
-    
-    const user = await User.findOne({ 'vCards._id': vCardId });
-    
+    const userId = req.user.userId;
+    const user = await User.findById(userId).select('vCards');
+
     if (!user) {
-      console.log(`vCard not found for id: ${vCardId}`);
-      return res.status(404).json({ error: 'vCard not found' });
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    const vCard = user.vCards.id(vCardId);
-    
-    if (!vCard) {
-      console.log(`vCard not found in user document for id: ${vCardId}`);
-      return res.status(404).json({ error: 'vCard not found' });
-    }
-
-    console.log(`Successfully fetched public vCard for preview: ${JSON.stringify(vCard)}`);
-
-    // Send the vCard data as JSON without the QR code
     res.json({
-      templateId: vCard.templateId,
-      fields: vCard.fields
+      vCards: user.vCards || [],
+      count: user.vCards.length
     });
   } catch (error) {
-    console.error('Error fetching public vCard preview:', error);
-    res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
+    console.error('Error fetching vCards:', error);
+    res.status(500).json({ error: 'Failed to fetch vCards' });
   }
 };
 
-exports.getVCardPreview = async (req, res) => {
+
+exports.deleteVCard = async (req, res) => {
   try {
     const { vCardId } = req.params;
-    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
-    const userAgent = req.headers['user-agent'];
+    const userId = req.user.userId;
 
-    console.log(`Handling preview for vCardId: ${vCardId}`);
-    console.log('IP Address:', ip);
-    console.log('User Agent:', userAgent);
-
-    const user = await User.findOne({ 'vCards._id': vCardId });
-
+    const user = await User.findById(userId);
     if (!user) {
-      console.log(`vCard not found for id: ${vCardId}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const vCardIndex = user.vCards.findIndex(card => card._id.toString() === vCardId);
+    if (vCardIndex === -1) {
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    user.vCards.splice(vCardIndex, 1);
+    await user.save();
+
+    res.json({ message: 'vCard deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting vCard:', error);
+    res.status(500).json({ error: 'Error deleting vCard', details: error.message });
+  }
+};
+
+exports.getVCard = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const userId = req.user.userId;
+    console.log(`Fetching vCard ${vCardId} for user ${userId}`);
+
+    const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
+    
+    if (!user) {
+      console.log(`User or vCard not found for userId: ${userId}, vCardId: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found' });
     }
 
     const vCard = user.vCards.id(vCardId);
-
     if (!vCard) {
-      console.log(`vCard not found in user document for id: ${vCardId}`);
+      console.log(`vCard not found in user document for vCardId: ${vCardId}`);
       return res.status(404).json({ error: 'vCard not found in user document' });
     }
 
-    // Check if a scan from this IP for this vCard already exists within the last 24 hours
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    let vCardScan = await VCardScan.findOne({ vCardId });
-
-    if (vCardScan) {
-      const existingScan = vCardScan.scans.find(scan => 
-        scan.ipAddress === ip && scan.scanDate > twentyFourHoursAgo
-      );
-
-      if (existingScan) {
-        console.log('Recent scan found, updating existing record');
-        existingScan.scanDate = new Date();
-        await vCardScan.save();
-      } else {
-        console.log('Creating new scan record');
-        let location;
-        try {
-          const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-          location = ipApiResponse.data;
-          console.log('Location data:', location);
-        } catch (error) {
-          console.error('Error fetching location data:', error);
-          location = null;
-        }
-
-        const scanData = {
-          ipAddress: ip,
-          userAgent,
-          scanDate: new Date(),
-          location: location && location.status === 'success' ? {
-            latitude: location.lat,
-            longitude: location.lon,
-            city: location.city,
-            country: location.country,
-          } : null,
-        };
-
-        vCardScan.scans.push(scanData);
-        await vCardScan.save();
-      }
-    } else {
-      console.log('Creating new VCardScan document');
-      let location;
-      try {
-        const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
-        location = ipApiResponse.data;
-        console.log('Location data:', location);
-      } catch (error) {
-        console.error('Error fetching location data:', error);
-        location = null;
-      }
-
-      const scanData = {
-        ipAddress: ip,
-        userAgent,
-        scanDate: new Date(),
-        location: location && location.status === 'success' ? {
-          latitude: location.lat,
-          longitude: location.lon,
-          city: location.city,
-          country: location.country,
-        } : null,
-      };
-
-      vCardScan = new VCardScan({ vCardId, scans: [scanData] });
-      await vCardScan.save();
-    }
-
-    console.log('Preview scan recorded or updated successfully');
-
+    console.log(`Successfully fetched vCard: ${JSON.stringify(vCard)}`);
     res.json({
-      templateId: vCard.templateId,
-      fields: vCard.fields,
+      ...vCard.toObject(),
       qrCodeDataUrl: vCard.qrCode
     });
   } catch (error) {
-    console.error('Error fetching vCard preview:', error);
-    res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
+    console.error('Error fetching vCard:', error);
+    res.status(500).json({ error: 'Error fetching vCard', details: error.message });
   }
 };
+
+exports.getPublicVCard = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Fetching public vCard with id: ${id}`);
+    
+    const user = await User.findOne({ 'vCards._id': id });
+    
+    if (!user) {
+      console.log(`vCard not found for id: ${id}`);
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    const vCard = user.vCards.id(id);
+    
+    if (!vCard) {
+      console.log(`vCard not found in user document for id: ${id}`);
+      return res.status(404).json({ error: 'vCard not found' });
+    }
+
+    console.log(`Successfully fetched public vCard: ${JSON.stringify(vCard)}`);
+    res.json({
+      ...vCard.toObject(),
+      qrCodeDataUrl: vCard.qrCode
+    });
+  } catch (error) {
+    console.error('Error fetching public vCard:', error);
+    res.status(500).json({ error: 'Error fetching vCard' });
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+// ----------------------------{  Analytics functions }-------------------------------------
+// ----------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------
+
+
+
 
 exports.handleScan = async (req, res) => {
   try {
@@ -586,7 +1153,6 @@ exports.handleScan = async (req, res) => {
   }
 };
 
-// Update the getVCardAnalytics function
 exports.getVCardAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -658,11 +1224,6 @@ exports.getVCardAnalytics = async (req, res) => {
   }
 };
 
-exports.handleQRScan = async (req, res) => {
-
-  // This function will be implemented later
-  res.status(501).json({ message: 'QR scan functionality not implemented yet' });
-};
 
 exports.getVCardScanAnalytics = async (req, res) => {
   try {
@@ -796,275 +1357,69 @@ exports.recordTimeSpent = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
-// ----------------------------{ auth functions }-------------------------------------
+// ----------------------------{  Misc functions }-------------------------------------
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 
-
-exports.register = async (req, res) => {
-  try {
-    console.log('Register request body:', req.body);
-    const { username, email, password } = req.body;
-    
-    // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Create verification token
-    const verificationToken = crypto.randomBytes(20).toString('hex');
-    const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-    user = new User({
-      username,
-      email,
-      password,
-      verificationToken,
-      verificationExpires,
-      isVerified: false
-    });
-    await user.save();
-
-    // Send verification email
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-    const message = `Please click on the following link to verify your email: ${verificationUrl}`;
-
-    await sendEmail({
-      to: user.email,
-      subject: 'Email Verification',
-      text: message,
-    });
-
-    res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
-  }
-};
-
-exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ error: 'Invalid credentials ' });
-    }
-
-    if (!user.isVerified) {
-      return res.status(403).json({ error: 'Please verify your email before logging in' });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Error logging in' });
-  }
-};
-
-exports.forgotPassword = async (req, res) => {
-  try {
-    console.log('Forgot password request body:', req.body);
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // Token expires in 10 minutes
-    await user.save();
-
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-    const message = `You are receiving this email because you (or someone else) have requested the reset of the password for your account.\n\nPlease click on the following link, or paste this into your browser to complete the process:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
-
-    console.log('Attempting to send email to:', user.email);
-
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: 'Password Reset Request',
-        text: message,
-      });
-
-      res.status(200).json({ message: 'Password reset email sent' });
-    } catch (error) {
-      console.error('Send email error:', error);
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpires = undefined;
-      await user.save();
-
-      return res.status(500).json({ error: 'Error sending password reset email' });
-    }
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-};
-
-exports.resetPassword = async (req, res) => {
-  try {
-    console.log('Reset password request body:', req.body);
-    console.log('Reset password token from params:', req.params.token);
-    
-    const { token } = req.params;
-    const { password } = req.body;
-
-    const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
-    }
-
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
-
-    res.status(200).json({ message: 'Password has been reset' });
-  } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Error resetting password' });
-  }
-};
-
-exports.getCurrentUser = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('-password');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-  } catch (error) {
-    console.error('Get current user error:', error);
-    res.status(500).json({ error: 'Error fetching user data' });
-  }
-};
-
-exports.getUserPlan = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('plan');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json({ planName: user.plan?.name || 'Free' });
-  } catch (error) {
-    console.error('Get user plan error:', error);
-    res.status(500).json({ error: 'Error fetching user plan' });
-  }
-};
-
-exports.getUserInfo = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('username email plan');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-  } catch (error) {
-    console.error('Get user info error:', error);
-    res.status(500).json({ error: 'Error fetching user info' });
-  }
-};
-
-exports.checkVerificationStatus = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('isVerified');
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json({ isVerified: user.isVerified });
-  } catch (error) {
-    console.error('Check verification status error:', error);
-    res.status(500).json({ error: 'Error checking verification status' });
-  }
-};
-exports.verifyEmail = async (req, res) => {
-  try {
-    const { token } = req.params;
-    const user = await User.findOne({
-      verificationToken: token,
-      verificationExpires: { $gt: Date.now() }
-    });
-
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired verification token' });
-    }
-
-    user.isVerified = true;
-    user.verificationToken = undefined;
-    user.verificationExpires = undefined;
-    await user.save();
-
-    res.json({ message: 'Email verified successfully. You can now log in.' });
-  } catch (error) {
-    console.error('Email verification error:', error);
-    res.status(500).json({ error: 'Email verification failed' });
-  }
-};
-
-exports.resendVerification = async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({ error: 'Email already verified' });
-    }
-
-    // Check if a minute has passed since the last verification email
-    if (user.lastVerificationSent && Date.now() - user.lastVerificationSent < 60000) {
-      return res.status(400).json({ error: 'Please wait a minute before requesting a new verification email' });
-    }
-
-    // Create new verification token
-    user.verificationToken = crypto.randomBytes(20).toString('hex');
-    user.verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    user.lastVerificationSent = Date.now();
-    await user.save();
-
-    // Send verification email
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${user.verificationToken}`;
-    const message = `Please click on the following link to verify your email: ${verificationUrl}`;
-
-    await sendEmail({
-      to: user.email,
-      subject: 'Email Verification',
-      text: message,
-    });
-
-    res.json({ message: 'Verification email sent. Please check your inbox.' });
-  } catch (error) {
-    console.error('Resend verification error:', error);
-    res.status(500).json({ error: 'Failed to resend verification email' });
-  }
-};
 
 
 exports.testGeolocation = async (req, res) => {
@@ -1100,6 +1455,11 @@ exports.testGeolocation = async (req, res) => {
     console.error('Error testing geolocation:', error);
     res.status(500).json({ success: false, error: 'Error testing geolocation' });
   }
+};
+exports.handleQRScan = async (req, res) => {
+
+  // This function will be implemented later
+  res.status(501).json({ message: 'QR scan functionality not implemented yet' });
 };
 
 
