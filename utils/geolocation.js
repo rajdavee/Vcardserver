@@ -2,12 +2,8 @@ const axios = require('axios');
 
 async function getLocationData(ip) {
   try {
-    const [ipApiResponse, ipInfoResponse] = await Promise.all([
-      axios.get(`http://ip-api.com/json/${ip}`),
-      axios.get(`https://ipinfo.io/${ip}/json`)
-    ]);
-
-    const ipApiLocation = ipApiResponse.data;
+    // First, try to get location from ipinfo.io
+    const ipInfoResponse = await axios.get(`https://ipinfo.io/${ip}/json`);
     const ipInfoLocation = ipInfoResponse.data;
 
     if (ipInfoLocation.city && ipInfoLocation.country) {
@@ -17,7 +13,13 @@ async function getLocationData(ip) {
         city: ipInfoLocation.city,
         country: ipInfoLocation.country
       };
-    } else if (ipApiLocation.status === 'success') {
+    }
+
+    // If ipinfo.io fails or provides incomplete data, try ip-api.com
+    const ipApiResponse = await axios.get(`http://ip-api.com/json/${ip}`);
+    const ipApiLocation = ipApiResponse.data;
+
+    if (ipApiLocation.status === 'success') {
       return {
         latitude: ipApiLocation.lat,
         longitude: ipApiLocation.lon,
@@ -26,6 +28,7 @@ async function getLocationData(ip) {
       };
     }
 
+    // If both services fail, return unknown location
     return {
       latitude: null,
       longitude: null,
