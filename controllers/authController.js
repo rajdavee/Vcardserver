@@ -476,23 +476,31 @@ exports.getUserPlan = async (req, res) => {
   }
 };
 
+
 exports.getUserInfo = async (req, res) => {
+  console.log('getUserInfo function called');
   try {
     const user = await User.findById(req.user.userId).select('username email plan');
     if (!user) {
+      console.log('User not found');
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(user);
+    console.log('User info retrieved:', JSON.stringify(user, null, 2));
+    res.json({
+      username: user.username,
+      email: user.email,
+      plan: {
+        name: user.plan.name,
+        availableTemplates: user.plan.availableTemplates,
+        price: user.plan.price,
+        subscribedAt: user.plan.subscribedAt
+      }
+    });
   } catch (error) {
     console.error('Get user info error:', error);
     res.status(500).json({ error: 'Error fetching user info' });
   }
 };
-
-
-
-
-
 
 
 

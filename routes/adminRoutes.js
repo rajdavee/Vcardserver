@@ -35,4 +35,7 @@ router.get('/vcards/:vCardId', adminController.getVCardById);
 router.put('/vcards/:vCardId', adminController.updateVCard);
 router.delete('/vcards/:vCardId', adminController.deleteVCard);
 
+// Add this new route
+router.put('/plans/:planName/templates', authenticateJWT,  adminController.updatePlanTemplates);
+
 module.exports = router;

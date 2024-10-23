@@ -21,9 +21,22 @@ const userSchema = new mongoose.Schema({
   resetPasswordToken: String,
   resetPasswordExpires: Date,
   plan: {
-    name: { type: String, default: null },
-    price: { type: Number, default: 0 },
-    subscribedAt: { type: Date, default: null }
+    name: {
+      type: String,
+      default: 'free'
+    },
+    availableTemplates: {
+      type: [Number],
+      default: [1]
+    },
+    price: {
+      type: Number,
+      default: 0
+    },
+    subscribedAt: {
+      type: Date,
+      default: Date.now
+    }
   },
   paymentInfo: {
     sessionId: { type: String, default: null },

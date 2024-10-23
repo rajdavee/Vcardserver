@@ -376,3 +376,33 @@ exports.deleteVCard = async (req, res) => {
     res.status(500).json({ error: 'Error deleting vCard', details: error.message });
   }
 };
+
+exports.updatePlanTemplates = async (req, res) => {
+  try {
+    const { planName } = req.params; // Change this line
+    const { templates } = req.body;
+    console.log(`Updating templates for plan: ${planName}`, templates);
+    
+    // Validate that templates is an array of numbers
+    if (!Array.isArray(templates) || !templates.every(Number.isInteger)) {
+      return res.status(400).json({ error: 'Templates must be an array of integers' });
+    }
+
+    // Update all users with the specified plan (case-insensitive)
+    const result = await User.updateMany(
+      { 'plan.name': { $regex: new RegExp(`^${planName}$`, 'i') } },
+      { $set: { 'plan.availableTemplates': templates } }
+    );
+
+    console.log(`Updated ${result.modifiedCount} users`); // Change this line
+
+    res.json({ message: 'Plan templates updated successfully', updatedCount: result.modifiedCount });
+  } catch (error) {
+    console.error('Error updating plan templates:', error);
+    res.status(500).json({ error: 'Error updating plan templates' });
+  }
+};
+
+
+
+
