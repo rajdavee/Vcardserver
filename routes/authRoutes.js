@@ -53,7 +53,7 @@ router.post('/resend-verification', resendVerification);
 
 router.get('/verification-status', authenticateJWT, checkVerificationStatus);
 
-router.get('/vcard-analytics/:vCardId', authenticateJWT, getVCardAnalytics);
+router.get('/vcard-analytics/:vCardId', authenticateJWT, analyticsController.getVCardAnalytics);
 
 router.get('/user-analytics', authenticateJWT, getUserScanAnalytics);
 
