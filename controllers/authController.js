@@ -13,6 +13,7 @@
   const axios = require('axios');
   const mongoose = require('mongoose');
   const cloudinary = require('../config/cloudinaryConfig');
+  const geoip = require('geoip-lite');
 
 
 
@@ -1113,21 +1114,30 @@ exports.handleScan = async (req, res) => {
     const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
     const device = isMobile ? 'Mobile' : 'Desktop';
 
-    // Use a more reliable geolocation service (you may need to sign up for an API key)
-    const geoApiUrl = `https://api.ipgeolocation.io/ipgeo?apiKey=YOUR_API_KEY&ip=${ip}`;
-    const geoResponse = await axios.get(geoApiUrl);
-    const locationData = geoResponse.data;
+    // Use geoip-lite for location detection
+    const geo = geoip.lookup(ip);
+    
+    let locationData = {
+      latitude: null,
+      longitude: null,
+      city: 'Unknown',
+      country: 'Unknown'
+    };
+
+    if (geo) {
+      locationData = {
+        latitude: geo.ll[0],
+        longitude: geo.ll[1],
+        city: geo.city || 'Unknown',
+        country: geo.country || 'Unknown'
+      };
+    }
 
     const scanData = {
       ipAddress: ip,
       userAgent,
       scanDate: new Date(),
-      location: {
-        latitude: locationData.latitude,
-        longitude: locationData.longitude,
-        city: locationData.city,
-        country: locationData.country_name
-      },
+      location: locationData,
       device,
       scanType
     };

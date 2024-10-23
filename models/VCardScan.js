@@ -13,6 +13,11 @@ const scanSchema = new mongoose.Schema({
     city: String,
     country: String
   },
+  device: {
+    type: String,
+    enum: ['Mobile', 'Desktop'],
+    required: true
+  },
   timeSpent: Number,
   scanType: {
     type: String,
