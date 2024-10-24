@@ -92,11 +92,13 @@ function generateVCardString(vCardData) {
   return vCard;
 }
 
-async function generateQRCode(vCardData) {
-  const vCardString = generateVCardString(vCardData);
-  const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
-  return { qrCodeDataUrl, vCardString };
-}
+
+
+// async function generateQRCode(vCardData) {
+//   const vCardString = generateVCardString(vCardData);
+//   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
+//   return { qrCodeDataUrl, vCardString };
+// }
 
 
 
@@ -164,10 +166,110 @@ async function generateQRCode(vCardData) {
 // ----------------------------{  Auth functions }-------------------------------------
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
+
+
+
+
+
+
+// exports.register = async (req, res) => {
+//   try {
+//     console.log('Register request body:', req.body);
+//     const { username, email, password } = req.body;
+    
+    
+//     // Check if user already exists
+//     let user = await User.findOne({ email });
+//     if (user) {
+//       return res.status(400).json({ error: 'User already exists' });
+//     }
+
+//     // Create verification token
+//     const verificationToken = crypto.randomBytes(20).toString('hex');
+//     const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+//     user = new User({
+//       username,
+//       email,
+//       password,
+//       verificationToken,
+//       verificationExpires,
+//       isVerified: false
+//     });
+//     await user.save();
+
+//     // Send verification email
+//     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+//     const message = `Please click on the following link to verify your email: ${verificationUrl}`;
+
+//     await sendEmail({
+//       to: user.email,
+//       subject: 'Email Verification',
+//       text: message,
+//     });
+
+//     res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
+//   } catch (error) {
+//     console.error('Registration error:', error);
+//     res.status(500).json({ error: 'Registration failed' });
+//   }
+// };
+
+// exports.login = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+//     const user = await User.findOne({ email });
+
+//     if (!user || !(await user.comparePassword(password))) {
+//       return res.status(401).json({ error: 'Invalid credentials ' });
+//     }
+
+//     if (!user.isVerified) {
+//       return res.status(403).json({ error: 'Please verify your email before logging in' });
+//     }
+
+//     const token = jwt.sign(
+//       { userId: user._id, role: user.role },
+//       process.env.JWT_SECRET,
+//       { expiresIn: '1h' }
+//     );
+
+//     res.json({
+//       token,
+//       user: {
+//         id: user._id,
+//         username: user.username,
+//         email: user.email,
+//         role: user.role
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Login error:', error);
+//     res.status(500).json({ error: 'Error logging in' });
+//   }
+// };
+
+
 exports.register = async (req, res) => {
   try {
     console.log('Register request body:', req.body);
     const { username, email, password } = req.body;
+    
+    // Check for missing required fields
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+    
+    // Check for invalid email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    
+    // Check for weak password
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password is too weak. It must be at least 8 characters long' });
+    }
     
     // Check if user already exists
     let user = await User.findOne({ email });
@@ -179,6 +281,7 @@ exports.register = async (req, res) => {
     const verificationToken = crypto.randomBytes(20).toString('hex');
     const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
+    // Create new user
     user = new User({
       username,
       email,
@@ -187,32 +290,45 @@ exports.register = async (req, res) => {
       verificationExpires,
       isVerified: false
     });
+
+    // Save user to database
     await user.save();
 
-    // Send verification email
+    // Generate verification URL
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-    const message = `Please click on the following link to verify your email: ${verificationUrl}`;
 
+    // Send verification email
     await sendEmail({
       to: user.email,
       subject: 'Email Verification',
-      text: message,
+      text: `Please click on the following link to verify your email: ${verificationUrl}`,
+      html: `<p>Please click on the following link to verify your email:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`
     });
 
-    res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
+    res.status(201).json({ 
+      message: 'User registered successfully. Please check your email to verify your account.',
+      userId: user._id
+    });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Registration failed. Please try again later.' });
   }
 };
+
 
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    // Check for missing email or password
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     const user = await User.findOne({ email });
 
     if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ error: 'Invalid credentials ' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (!user.isVerified) {
@@ -239,6 +355,18 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error logging in' });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -311,9 +439,22 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+// exports.checkVerificationStatus = async (req, res) => {
+//   try {
+//     const user = await User.findById(req.user.userId).select('isVerified');
+//     if (!user) {
+//       return res.status(404).json({ error: 'User not found' });
+//     }
+//     res.json({ isVerified: user.isVerified });
+//   } catch (error) {
+//     console.error('Check verification status error:', error);
+//     res.status(500).json({ error: 'Error checking verification status' });
+//   }
+// };
+
 exports.checkVerificationStatus = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('isVerified');
+    const user = await User.findById(req.user.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -323,6 +464,9 @@ exports.checkVerificationStatus = async (req, res) => {
     res.status(500).json({ error: 'Error checking verification status' });
   }
 };
+
+
+
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;

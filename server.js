@@ -13,7 +13,7 @@ const adminRoutes = require('./routes/adminRoutes');
 
 
 app.use(cors({
-  origin: ['https://vcardclient.vercel.app', 'http://localhost:3000', 'http://localhost:5000'],
+  origin: ['https://vcardclient.vercel.app', 'http://localhost:3000', 'http://localhost:5000', 'http://frontend:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -65,4 +65,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
