@@ -10,6 +10,10 @@ jest.mock('../models/User');
 jest.mock('../utils/sendEmail');
 jest.mock('jsonwebtoken');
 
+
+
+
+
 describe('Auth Controller', () => {
   let req, res, next;
 
@@ -30,7 +34,10 @@ describe('Auth Controller', () => {
     jest.clearAllMocks();
   });
 
+
+
   describe('register', () => {
+
     it('should register a new user successfully', async () => {
       req.body = {
         username: 'testuser',
@@ -40,15 +47,15 @@ describe('Auth Controller', () => {
       User.findOne.mockResolvedValue(null);
       User.prototype.save.mockResolvedValue({});
       sendEmail.mockResolvedValue();
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('User registered successfully'),
       }));
     });
-
+  
     it('should return error if user already exists', async () => {
       req.body = {
         username: 'existinguser',
@@ -56,52 +63,52 @@ describe('Auth Controller', () => {
         password: 'password123',
       };
       User.findOne.mockResolvedValue({ email: 'existing@example.com' });
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ error: 'User already exists' });
     });
-
+  
     it('should handle missing required fields', async () => {
       req.body = {
         username: 'testuser',
         // email is missing
         password: 'password123',
       };
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('required') });
+      expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('All fields are required') });
     });
-
+  
     it('should handle invalid email format', async () => {
       req.body = {
         username: 'testuser',
         email: 'invalid-email',
         password: 'password123',
       };
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('valid email') });
+      expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Invalid email format') });
     });
-
+  
     it('should handle weak password', async () => {
       req.body = {
         username: 'testuser',
         email: 'test@example.com',
         password: 'weak',
       };
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Password is too weak') });
-    });
-
+    }); 
+  
     it('should handle database errors', async () => {
       req.body = {
         username: 'testuser',
@@ -109,13 +116,169 @@ describe('Auth Controller', () => {
         password: 'password123',
       };
       User.findOne.mockRejectedValue(new Error('Database error'));
-
+  
       await authController.register(req, res);
-
+  
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Registration failed. Please try again later.' });
     });
+  
+    it('should hash the password before saving the user', async () => {
+      req.body = {
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      User.findOne.mockResolvedValue(null);
+  
+      const saveMock = jest.spyOn(User.prototype, 'save').mockResolvedValueOnce({
+        password: 'hashedPassword123',
+      });
+  
+      await authController.register(req, res);
+  
+      expect(saveMock).toHaveBeenCalled();
+      expect(saveMock.mock.instances[0].password).not.toBe('password123');
+    });
+
+    it('should generate a verification token for the user', async () => {
+      req.body = {
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      
+      // Mock the `findOne` method to return null (user does not exist)
+      User.findOne.mockResolvedValue(null);
+    
+      // Mock the User constructor to create a new user instance
+      const userInstance = {
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'hashedPassword123', // Simulate password hashing
+        verificationToken: '', // Initialize as empty
+        save: jest.fn().mockResolvedValue({}),
+      };
+      
+      User.mockImplementation(() => userInstance); // Mock the User constructor
+    
+      await authController.register(req, res);
+    
+      // Verify that a new user instance was created
+      expect(userInstance.save).toHaveBeenCalled();
+      
+      // Check if the verificationToken was set on the user instance
+      expect(userInstance.verificationToken).toEqual(expect.any(String));
+    });
+    
+    it('should generate a valid email verification URL', async () => {
+      req.body = {
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      User.findOne.mockResolvedValue(null);
+      sendEmail.mockResolvedValue();
+  
+      await authController.register(req, res);
+  
+      expect(sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining(`${process.env.FRONTEND_URL}/verify-email?token=`),
+        })
+      );
+    });
+    it('should handle email sending failures', async () => {
+      req.body = {
+        username: 'testuser',
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      User.findOne.mockResolvedValue(null);
+      sendEmail.mockRejectedValue(new Error('Email service failed'));
+  
+      await authController.register(req, res);
+  
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Email sending failed. Please try again later.' });
+    });
+it('should return error for invalid username', async () => {
+  req.body = {
+    username: '', // Invalid username (empty)
+    email: 'test@example.com',
+    password: 'password123',
+  };
+
+  await authController.register(req, res);
+
+  // Check the response status and error message
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: 'Invalid username format' });
+});
+it('should handle weak password with missing criteria', async () => {
+  req.body = {
+    username: 'testuser',
+    email: 'test@example.com',
+    password: 'Weak1', // Missing special character
+  };
+
+  await authController.register(req, res);
+
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('Password is too weak') });
+});
+it('should handle potential SQL injection attempts', async () => {
+  req.body = {
+    username: 'testuser',
+    email: 'test@example.com',
+    password: 'password123; DROP TABLE users;', // SQL injection attempt
+  };
+
+  await authController.register(req, res);
+
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: 'Invalid password format' });
+});
+// Test for token expiration handling
+it('should return error if token is expired', async () => {
+  req.body = {
+    username: 'testuser',
+    email: 'test@example.com',
+    password: 'Password123!',
+  };
+
+  // Mock the User constructor to return an object with an expired token
+  User.mockImplementation(() => ({
+    save: jest.fn().mockImplementation(function() {
+      this.verificationExpires = Date.now() - 1000; // Token expired 1 second ago
+      return Promise.resolve(this);
+    }),
+  }));
+
+  await authController.register(req, res);
+
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: 'Verification token expired' });
+});
+it('should not allow XSS input in username', async () => {
+  req.body = {
+    username: '<script>alert("XSS")</script>', // Invalid username
+    email: 'test@example.com',
+    password: 'Password123!',
+  };
+
+  User.findOne.mockResolvedValue(null);
+
+  // Invoke the function
+  await authController.register(req, res);
+
+  // Check that the response status is 400 and the error message is appropriate
+  expect(res.status).toHaveBeenCalledWith(400);
+  expect(res.json).toHaveBeenCalledWith({ error: 'Invalid username format' });
+});
+  
   });
+  
 
   describe('login', () => {
     it('should login user successfully', async () => {
@@ -213,6 +376,27 @@ describe('Auth Controller', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Error logging in' });
     });
+
+
+
+
+    it('should handle password hashing errors', async () => {
+      req.body = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      const mockUser = {
+        email: 'test@example.com',
+        comparePassword: jest.fn().mockRejectedValue(new Error('Hashing error')),
+      };
+      User.findOne.mockResolvedValue(mockUser);
+    
+      await authController.login(req, res);
+    
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Error logging in' });
+    });
+    
   });
 
   describe('forgotPassword', () => {
@@ -376,3 +560,10 @@ describe('Auth Controller', () => {
     });
   });
 });
+
+
+
+
+
+
+

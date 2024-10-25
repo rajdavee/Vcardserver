@@ -18,11 +18,6 @@
   const requestIp = require('request-ip');
   
 
-
-  
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  Helper functions }-------------------------------------
@@ -93,74 +88,6 @@ function generateVCardString(vCardData) {
 }
 
 
-
-// async function generateQRCode(vCardData) {
-//   const vCardString = generateVCardString(vCardData);
-//   const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
-//   return { qrCodeDataUrl, vCardString };
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  Auth functions }-------------------------------------
@@ -170,110 +97,41 @@ function generateVCardString(vCardData) {
 
 
 
-
-
-// exports.register = async (req, res) => {
-//   try {
-//     console.log('Register request body:', req.body);
-//     const { username, email, password } = req.body;
-    
-    
-//     // Check if user already exists
-//     let user = await User.findOne({ email });
-//     if (user) {
-//       return res.status(400).json({ error: 'User already exists' });
-//     }
-
-//     // Create verification token
-//     const verificationToken = crypto.randomBytes(20).toString('hex');
-//     const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-//     user = new User({
-//       username,
-//       email,
-//       password,
-//       verificationToken,
-//       verificationExpires,
-//       isVerified: false
-//     });
-//     await user.save();
-
-//     // Send verification email
-//     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-//     const message = `Please click on the following link to verify your email: ${verificationUrl}`;
-
-//     await sendEmail({
-//       to: user.email,
-//       subject: 'Email Verification',
-//       text: message,
-//     });
-
-//     res.status(201).json({ message: 'User registered successfully. Please check your email to verify your account.' });
-//   } catch (error) {
-//     console.error('Registration error:', error);
-//     res.status(500).json({ error: 'Registration failed' });
-//   }
-// };
-
-// exports.login = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
-//     const user = await User.findOne({ email });
-
-//     if (!user || !(await user.comparePassword(password))) {
-//       return res.status(401).json({ error: 'Invalid credentials ' });
-//     }
-
-//     if (!user.isVerified) {
-//       return res.status(403).json({ error: 'Please verify your email before logging in' });
-//     }
-
-//     const token = jwt.sign(
-//       { userId: user._id, role: user.role },
-//       process.env.JWT_SECRET,
-//       { expiresIn: '1h' }
-//     );
-
-//     res.json({
-//       token,
-//       user: {
-//         id: user._id,
-//         username: user.username,
-//         email: user.email,
-//         role: user.role
-//       }
-//     });
-//   } catch (error) {
-//     console.error('Login error:', error);
-//     res.status(500).json({ error: 'Error logging in' });
-//   }
-// };
-
-
 exports.register = async (req, res) => {
   try {
-    console.log('Register request body:', req.body);
     const { username, email, password } = req.body;
-    
+
+    // Check for valid username (minimum 3 characters, no special characters)
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username) || username.trim() === '') {
+      return res.status(400).json({ error: 'Invalid username format' });
+    }
+
     // Check for missing required fields
-    if (!username || !email || !password) {
+    if (!email || !password) {
       return res.status(400).json({ error: 'All fields are required' });
     }
-    
+
     // Check for invalid email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
-    
-    // Check for weak password
+
+    // Check for weak password (minimum 8 characters)
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password is too weak. It must be at least 8 characters long' });
     }
-    
+
+    // Sanitize password to prevent SQL injection attempts
+    const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()_+<>?]{8,}$/; // Adjust the regex as necessary
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ error: 'Invalid password format' });
+    }
+
     // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
@@ -282,30 +140,51 @@ exports.register = async (req, res) => {
     const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
     // Create new user
-    user = new User({
+    const user = new User({
       username,
       email,
-      password,
+      password, // Password hashing will be handled by the pre('save') middleware in the schema
       verificationToken,
       verificationExpires,
-      isVerified: false
+      isVerified: false,
+      role: 'user' // Default role
     });
 
     // Save user to database
-    await user.save();
+    try {
+      await user.save();
+    } catch (saveError) {
+      if (saveError.code === 11000) { // MongoDB duplicate key error
+        return res.status(400).json({ error: 'User already exists' });
+      }
+      throw saveError; // Re-throw other errors
+    }
+
+    // Check if token is expired (this is unlikely to happen immediately after creation, but included for completeness)
+    if (user.verificationExpires < Date.now()) {
+      await User.deleteOne({ _id: user._id });
+      return res.status(400).json({ error: 'Verification token expired' });
+    }
 
     // Generate verification URL
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
     // Send verification email
-    await sendEmail({
-      to: user.email,
-      subject: 'Email Verification',
-      text: `Please click on the following link to verify your email: ${verificationUrl}`,
-      html: `<p>Please click on the following link to verify your email:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`
-    });
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Email Verification',
+        text: `Please click on the following link to verify your email: ${verificationUrl}`,
+        html: `<p>Please click on the following link to verify your email:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`
+      });
+    } catch (emailError) {
+      // Handle email sending failure
+      console.error('Email sending error:', emailError);
+      await User.deleteOne({ _id: user._id }); // Rollback user creation if email fails
+      return res.status(500).json({ error: 'Email sending failed. Please try again later.' });
+    }
 
-    res.status(201).json({ 
+    res.status(201).json({
       message: 'User registered successfully. Please check your email to verify your account.',
       userId: user._id
     });
@@ -314,6 +193,7 @@ exports.register = async (req, res) => {
     res.status(500).json({ error: 'Registration failed. Please try again later.' });
   }
 };
+
 
 
 exports.login = async (req, res) => {
@@ -355,19 +235,6 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error logging in' });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
 exports.forgotPassword = async (req, res) => {
   try {
     console.log('Forgot password request body:', req.body);
@@ -409,7 +276,6 @@ exports.forgotPassword = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
-
 exports.resetPassword = async (req, res) => {
   try {
     console.log('Reset password request body:', req.body);
@@ -438,20 +304,6 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ error: 'Error resetting password' });
   }
 };
-
-// exports.checkVerificationStatus = async (req, res) => {
-//   try {
-//     const user = await User.findById(req.user.userId).select('isVerified');
-//     if (!user) {
-//       return res.status(404).json({ error: 'User not found' });
-//     }
-//     res.json({ isVerified: user.isVerified });
-//   } catch (error) {
-//     console.error('Check verification status error:', error);
-//     res.status(500).json({ error: 'Error checking verification status' });
-//   }
-// };
-
 exports.checkVerificationStatus = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -464,9 +316,6 @@ exports.checkVerificationStatus = async (req, res) => {
     res.status(500).json({ error: 'Error checking verification status' });
   }
 };
-
-
-
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -490,7 +339,6 @@ exports.verifyEmail = async (req, res) => {
     res.status(500).json({ error: 'Email verification failed' });
   }
 };
-
 exports.resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
@@ -531,64 +379,6 @@ exports.resendVerification = async (req, res) => {
     res.status(500).json({ error: 'Failed to resend verification email' });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  User functions }-------------------------------------
@@ -606,7 +396,6 @@ exports.getCurrentUser = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user data' });
   }
 };
-
 exports.getUserPlan = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('plan');
@@ -619,8 +408,6 @@ exports.getUserPlan = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user plan' });
   }
 };
-
-
 exports.getUserInfo = async (req, res) => {
   console.log('getUserInfo function called');
   try {
@@ -645,90 +432,6 @@ exports.getUserInfo = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user info' });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  vCard functions }-------------------------------------
@@ -766,66 +469,6 @@ exports.getPublicVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard preview', details: error.message });
   }
 };
-
-
-
-
-// exports.getVCardPreview = async (req, res) => {
-//   try {
-//     const { vCardId } = req.params;
-//     const ip = req.headers['x-forwarded-for'] || 
-//                req.connection.remoteAddress || 
-//                req.socket.remoteAddress ||
-//                (req.connection.socket ? req.connection.socket.remoteAddress : null);
-
-//     const user = await User.findOne({ 'vCards._id': vCardId });
-//     if (!user) {
-//       return res.status(404).json({ error: 'vCard not found' });
-//     }
-
-//     const vCard = user.vCards.id(vCardId);
-//     if (!vCard) {
-//       return res.status(404).json({ error: 'vCard not found' });
-//     }
-
-//     // Record the preview access
-//     let vCardScan = await VCardScan.findOne({ vCardId });
-//     if (!vCardScan) {
-//       vCardScan = new VCardScan({ vCardId, scans: [] });
-//     }
-
-//     const userAgent = req.headers['user-agent'];
-//     const isMobile = /Mobile|Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-//     const device = isMobile ? 'Mobile' : 'Desktop';
-
-//     const locationData = await getLocationData(ip);
-
-//     const scanData = {
-//       ipAddress: ip,
-//       userAgent,
-//       scanDate: new Date(),
-//       location: locationData,
-//       device,
-//       scanType: 'Preview'
-//     };
-
-//     vCardScan.scans.push(scanData);
-//     vCardScan.previewClicks++;
-//     await vCardScan.save();
-
-//     res.json({
-//       templateId: vCard.templateId,
-//       fields: vCard.fields,
-//       qrCodeDataUrl: vCard.qrCode
-//     });
-//   } catch (error) {
-//     console.error('Error getting vCard preview:', error);
-//     res.status(500).json({ error: 'Error getting vCard preview' });
-//   }
-// };
-
-
-
 exports.getVCardPreview = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -855,13 +498,6 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error getting vCard preview' });
   }
 };
-
-
-
-
-
-
-
 exports.createVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -911,7 +547,6 @@ exports.createVCard = async (req, res) => {
     res.status(500).json({ error: 'Error creating vCard', details: error.message });
   }
 };
-
 exports.updateVCard = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -984,7 +619,6 @@ exports.updateVCard = async (req, res) => {
     res.status(500).json({ error: 'Error updating vCard', details: error.message });
   }
 };
-
 exports.uploadChunk = async (req, res) => {
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -1033,7 +667,6 @@ exports.uploadChunk = async (req, res) => {
     res.status(500).send(err);
   }
 };
-
 exports.getVCards = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -1052,8 +685,6 @@ exports.getVCards = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch vCards' });
   }
 };
-
-
 exports.deleteVCard = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1078,7 +709,6 @@ exports.deleteVCard = async (req, res) => {
     res.status(500).json({ error: 'Error deleting vCard', details: error.message });
   }
 };
-
 exports.getVCard = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1108,7 +738,6 @@ exports.getVCard = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard', details: error.message });
   }
 };
-
 exports.getPublicVCard = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1139,102 +768,11 @@ exports.getPublicVCard = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  Analytics functions }-------------------------------------
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
-
-
 
 
 async function getIpAndLocationData(req) {
@@ -1270,64 +808,6 @@ async function getIpAndLocationData(req) {
     throw error;
   }
 }
-
-// exports.handleScan = async (req, res) => {
-//   try {
-//     const { vCardId } = req.params;
-//     const userAgent = req.headers['user-agent'];
-
-//     // Use the new combined function
-//     const { ipAddress, location, fullData } = await getIpAndLocationData(req);
-
-//     // Determine device type
-//     const isMobile = /mobile/i.test(userAgent);
-//     const device = isMobile ? 'Mobile' : 'Desktop';
-
-//     // Find or create VCardScan document
-//     let vCardScan = await VCardScan.findOne({ vCardId });
-//     if (!vCardScan) {
-//       vCardScan = new VCardScan({ vCardId, scans: [] });
-//     }
-
-//     // Create new scan entry
-//     const newScan = {
-//       ipAddress,
-//       userAgent,
-//       location,
-//       device,
-//       scanType: req.query.scanType || 'QR' // Default to 'QR' if not specified
-//     };
-
-//     // Add the new scan to the scans array
-//     vCardScan.scans.push(newScan);
-
-//     // Increment the appropriate counter
-//     switch (newScan.scanType) {
-//       case 'QR':
-//         vCardScan.qrScans += 1;
-//         break;
-//       case 'Link':
-//         vCardScan.linkClicks += 1;
-//         break;
-//       case 'Preview':
-//         vCardScan.previewClicks += 1;
-//         break;
-//     }
-
-//     await vCardScan.save();
-
-//     res.status(200).json({ message: 'Scan recorded successfully', scanId: newScan._id });
-//   } catch (error) {
-//     console.error('Error handling scan:', error);
-//     res.status(500).json({ error: 'Failed to record scan', details: error.message });
-//   }
-// };
-
-
-
-
-
-
 exports.handleScan = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1416,9 +896,6 @@ exports.handleScan = async (req, res) => {
     res.status(500).json({ error: 'Failed to record scan', details: error.message });
   }
 };
-
-
-
 exports.getVCardAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1489,8 +966,6 @@ exports.getVCardAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard analytics', details: error.message });
   }
 };
-
-
 exports.getVCardScanAnalytics = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1538,7 +1013,6 @@ exports.getVCardScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching vCard scan analytics' });
   }
 };
-
 exports.getUserScanAnalytics = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -1580,7 +1054,6 @@ exports.getUserScanAnalytics = async (req, res) => {
     res.status(500).json({ error: 'Error fetching user scan analytics' });
   }
 };
-
 exports.recordTimeSpent = async (req, res) => {
   try {
     const { vCardId } = req.params;
@@ -1624,62 +1097,6 @@ exports.recordTimeSpent = async (req, res) => {
 };
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  Misc functions }-------------------------------------
@@ -1707,19 +1124,11 @@ exports.testGeolocation = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error testing geolocation' });
   }
 };
-
-
-
-
 exports.handleQRScan = async (req, res) => {
 
   // This function will be implemented later
   res.status(501).json({ message: 'QR scan functionality not implemented yet' });
 };
-
-
-
-
 exports.testUserIpDetection = async (req, res) => {
   try {
     const clientIp = requestIp.getClientIp(req);
@@ -1752,8 +1161,6 @@ exports.testUserIpDetection = async (req, res) => {
     res.status(500).json({ success: false, error: 'Error detecting user IP or fetching location data' });
   }
 };
-
-
 
 exports.testLocationSpecificService = async (req, res) => {
   try {
