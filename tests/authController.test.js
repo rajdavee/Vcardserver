@@ -303,7 +303,6 @@ it('should not allow XSS input in username', async () => {
         user: expect.objectContaining({ email: 'test@example.com' }),
       }));
     });
-
     it('should return error for invalid credentials', async () => {
       req.body = {
         email: 'test@example.com',
@@ -320,7 +319,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'Invalid credentials' });
     });
-
     it('should return error for unverified email', async () => {
       req.body = {
         email: 'unverified@example.com',
@@ -338,7 +336,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({ error: 'Please verify your email before logging in' });
     });
-
     it('should handle non-existent user', async () => {
       req.body = {
         email: 'nonexistent@example.com',
@@ -351,7 +348,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'Invalid credentials' });
     });
-
     it('should handle missing email or password', async () => {
       req.body = {
         // email is missing
@@ -363,7 +359,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('required') });
     });
-
     it('should handle database errors during login', async () => {
       req.body = {
         email: 'test@example.com',
@@ -376,10 +371,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Error logging in' });
     });
-
-
-
-
     it('should handle password hashing errors', async () => {
       req.body = {
         email: 'test@example.com',
@@ -396,7 +387,17 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Error logging in' });
     });
+    it('should return error for missing password', async () => {
+      req.body = {
+        email: 'test@example.com',
+        // password is missing
+      };
     
+      await authController.login(req, res);
+    
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: expect.stringContaining('required') });
+    });
   });
 
   describe('forgotPassword', () => {
@@ -414,7 +415,6 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ message: 'Password reset email sent' });
     });
-
     it('should return error if user not found', async () => {
       req.body = { email: 'nonexistent@example.com' };
       User.findOne.mockResolvedValue(null);
@@ -424,6 +424,33 @@ it('should not allow XSS input in username', async () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({ error: 'User not found' });
     });
+    it('should handle error when sending email', async () => {
+      req.body = { email: 'test@example.com' };
+      const mockUser = {
+        email: 'test@example.com',
+        resetPasswordToken: undefined,
+        resetPasswordExpires: undefined,
+        save: jest.fn().mockResolvedValue({}), // Ensure save works
+      };
+      User.findOne.mockResolvedValue(mockUser);
+      sendEmail.mockRejectedValue(new Error('Email service error')); // Simulate email failure
+    
+      await authController.forgotPassword(req, res);
+    
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Error sending password reset email' });
+    });
+    it('should return error if email is missing', async () => {
+      req.body = {}; // No email provided
+    
+      await authController.forgotPassword(req, res);
+    
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Email is required' });
+    });
+    
+    
+    
   });
 
   describe('resetPassword', () => {

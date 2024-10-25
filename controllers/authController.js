@@ -97,105 +97,102 @@ function generateVCardString(vCardData) {
 
 
 
-exports.register = async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-
-    // Check for valid username (minimum 3 characters, no special characters)
-    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
-    if (!usernameRegex.test(username) || username.trim() === '') {
-      return res.status(400).json({ error: 'Invalid username format' });
-    }
-
-    // Check for missing required fields
-    if (!email || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-
-    // Check for invalid email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
-    }
-
-    // Check for weak password (minimum 8 characters)
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password is too weak. It must be at least 8 characters long' });
-    }
-
-    // Sanitize password to prevent SQL injection attempts
-    const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()_+<>?]{8,}$/; // Adjust the regex as necessary
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({ error: 'Invalid password format' });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Create verification token
-    const verificationToken = crypto.randomBytes(20).toString('hex');
-    const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-    // Create new user
-    const user = new User({
-      username,
-      email,
-      password, // Password hashing will be handled by the pre('save') middleware in the schema
-      verificationToken,
-      verificationExpires,
-      isVerified: false,
-      role: 'user' // Default role
-    });
-
-    // Save user to database
+  exports.register = async (req, res) => {
     try {
-      await user.save();
-    } catch (saveError) {
-      if (saveError.code === 11000) { // MongoDB duplicate key error
+      const { username, email, password } = req.body;
+
+      // Check for valid username (minimum 3 characters, no special characters)
+      const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+      if (!usernameRegex.test(username) || username.trim() === '') {
+        return res.status(400).json({ error: 'Invalid username format' });
+      }
+
+      // Check for missing required fields
+      if (!email || !password) {
+        return res.status(400).json({ error: 'All fields are required' });
+      }
+
+      // Check for invalid email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+
+      // Check for weak password (minimum 8 characters)
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password is too weak. It must be at least 8 characters long' });
+      }
+
+      // Sanitize password to prevent SQL injection attempts
+      const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()_+<>?]{8,}$/; // Adjust the regex as necessary
+      if (!passwordRegex.test(password)) {
+        return res.status(400).json({ error: 'Invalid password format' });
+      }
+
+      // Check if user already exists
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
         return res.status(400).json({ error: 'User already exists' });
       }
-      throw saveError; // Re-throw other errors
-    }
 
-    // Check if token is expired (this is unlikely to happen immediately after creation, but included for completeness)
-    if (user.verificationExpires < Date.now()) {
-      await User.deleteOne({ _id: user._id });
-      return res.status(400).json({ error: 'Verification token expired' });
-    }
+      // Create verification token
+      const verificationToken = crypto.randomBytes(20).toString('hex');
+      const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
-    // Generate verification URL
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-
-    // Send verification email
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: 'Email Verification',
-        text: `Please click on the following link to verify your email: ${verificationUrl}`,
-        html: `<p>Please click on the following link to verify your email:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`
+      // Create new user
+      const user = new User({
+        username,
+        email,
+        password, // Password hashing will be handled by the pre('save') middleware in the schema
+        verificationToken,
+        verificationExpires,
+        isVerified: false,
+        role: 'user' // Default role
       });
-    } catch (emailError) {
-      // Handle email sending failure
-      console.error('Email sending error:', emailError);
-      await User.deleteOne({ _id: user._id }); // Rollback user creation if email fails
-      return res.status(500).json({ error: 'Email sending failed. Please try again later.' });
+
+      // Save user to database
+      try {
+        await user.save();
+      } catch (saveError) {
+        if (saveError.code === 11000) { // MongoDB duplicate key error
+          return res.status(400).json({ error: 'User already exists' });
+        }
+        throw saveError; // Re-throw other errors
+      }
+
+      // Check if token is expired (this is unlikely to happen immediately after creation, but included for completeness)
+      if (user.verificationExpires < Date.now()) {
+        await User.deleteOne({ _id: user._id });
+        return res.status(400).json({ error: 'Verification token expired' });
+      }
+
+      // Generate verification URL
+      const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+
+      // Send verification email
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: 'Email Verification',
+          text: `Please click on the following link to verify your email: ${verificationUrl}`,
+          html: `<p>Please click on the following link to verify your email:</p><p><a href="${verificationUrl}">${verificationUrl}</a></p>`
+        });
+      } catch (emailError) {
+        // Handle email sending failure
+        console.error('Email sending error:', emailError);
+        await User.deleteOne({ _id: user._id }); // Rollback user creation if email fails
+        return res.status(500).json({ error: 'Email sending failed. Please try again later.' });
+      }
+
+      res.status(201).json({
+        message: 'User registered successfully. Please check your email to verify your account.',
+        userId: user._id
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed. Please try again later.' });
     }
-
-    res.status(201).json({
-      message: 'User registered successfully. Please check your email to verify your account.',
-      userId: user._id
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed. Please try again later.' });
-  }
-};
-
-
-
+  };
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -235,10 +232,17 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error logging in' });
   }
 };
+
+
 exports.forgotPassword = async (req, res) => {
   try {
-    console.log('Forgot password request body:', req.body);
     const { email } = req.body;
+
+    // Check for missing email
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -252,8 +256,6 @@ exports.forgotPassword = async (req, res) => {
 
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
     const message = `You are receiving this email because you (or someone else) have requested the reset of the password for your account.\n\nPlease click on the following link, or paste this into your browser to complete the process:\n\n${resetUrl}\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
-
-    console.log('Attempting to send email to:', user.email);
 
     try {
       await sendEmail({
@@ -276,6 +278,8 @@ exports.forgotPassword = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+
+
 exports.resetPassword = async (req, res) => {
   try {
     console.log('Reset password request body:', req.body);
