@@ -16,7 +16,6 @@
   const { getLocationData } = require('../utils/geolocation');
   const fetch = require('node-fetch');
   const requestIp = require('request-ip');
-  
 
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
@@ -86,18 +85,12 @@ function generateVCardString(vCardData) {
   vCard += `END:VCARD`;
   return vCard;
 }
-
-
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
 // ----------------------------{  Auth functions }-------------------------------------
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
-
-
-
-
-  exports.register = async (req, res) => {
+exports.register = async (req, res) => {
     try {
       const { username, email, password } = req.body;
 
@@ -192,7 +185,7 @@ function generateVCardString(vCardData) {
       console.error('Registration error:', error);
       res.status(500).json({ error: 'Registration failed. Please try again later.' });
     }
-  };
+};
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -232,8 +225,6 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Error logging in' });
   }
 };
-
-
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -278,8 +269,6 @@ exports.forgotPassword = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
-
-
 exports.resetPassword = async (req, res) => {
   try {
     console.log('Reset password request body:', req.body);
@@ -288,12 +277,32 @@ exports.resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
+    // Check if password is missing or empty
+    if (!password || password.trim() === '') {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    // Check for weak password (minimum 8 characters)
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password is too weak. It must be at least 8 characters long' });
+    }
+
+    // Sanitize password to prevent SQL injection attempts
+    const passwordRegex = /^[a-zA-Z0-9!@#$%^&*()_+<>?]{8,}$/; // Adjust the regex as necessary
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ error: 'Invalid password format' });
+    }
+
     const user = await User.findOne({
       resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user) {
+      return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
+    }
+
+    // Explicitly check if the token has expired
+    if (user.resetPasswordExpires < Date.now()) {
       return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
     }
 
@@ -310,6 +319,10 @@ exports.resetPassword = async (req, res) => {
 };
 exports.checkVerificationStatus = async (req, res) => {
   try {
+    if (!req.user || !req.user.userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     const user = await User.findById(req.user.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -323,13 +336,19 @@ exports.checkVerificationStatus = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
-    const user = await User.findOne({
-      verificationToken: token,
-      verificationExpires: { $gt: Date.now() }
-    });
+
+    if (!token) {
+      return res.status(400).json({ error: 'Verification token is required' });
+    }
+
+    const user = await User.findOne({ verificationToken: token });
 
     if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired verification token' });
+      return res.status(400).json({ error: 'Invalid verification token' });
+    }
+
+    if (user.verificationExpires < Date.now()) {
+      return res.status(400).json({ error: 'Verification token has expired' });
     }
 
     user.isVerified = true;
@@ -340,6 +359,9 @@ exports.verifyEmail = async (req, res) => {
     res.json({ message: 'Email verified successfully. You can now log in.' });
   } catch (error) {
     console.error('Email verification error:', error);
+    if (error.name === 'MongoError' || error.name === 'MongooseError') {
+      return res.status(500).json({ error: 'Database error occurred' });
+    }
     res.status(500).json({ error: 'Email verification failed' });
   }
 };
@@ -402,7 +424,7 @@ exports.getCurrentUser = async (req, res) => {
 };
 exports.getUserPlan = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('plan');
+    const user = await User.findById(req.user.userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -415,7 +437,7 @@ exports.getUserPlan = async (req, res) => {
 exports.getUserInfo = async (req, res) => {
   console.log('getUserInfo function called');
   try {
-    const user = await User.findById(req.user.userId).select('username email plan');
+    const user = await User.findById(req.user.userId);
     if (!user) {
       console.log('User not found');
       return res.status(404).json({ error: 'User not found' });
@@ -425,10 +447,10 @@ exports.getUserInfo = async (req, res) => {
       username: user.username,
       email: user.email,
       plan: {
-        name: user.plan.name,
-        availableTemplates: user.plan.availableTemplates,
-        price: user.plan.price,
-        subscribedAt: user.plan.subscribedAt
+        name: user.plan?.name,
+        availableTemplates: user.plan?.availableTemplates,
+        price: user.plan?.price,
+        subscribedAt: user.plan?.subscribedAt
       }
     });
   } catch (error) {
@@ -502,6 +524,7 @@ exports.getVCardPreview = async (req, res) => {
     res.status(500).json({ error: 'Error getting vCard preview' });
   }
 };
+
 exports.createVCard = async (req, res) => {
   try {
     const { userId } = req.user;
