@@ -16,6 +16,7 @@
   const { getLocationData } = require('../utils/geolocation');
   const fetch = require('node-fetch');
   const requestIp = require('request-ip');
+  const FormSubmission = require('../models/FormSubmission');
 
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
@@ -792,6 +793,65 @@ exports.getPublicVCard = async (req, res) => {
   } catch (error) {
     console.error('Error fetching public vCard:', error);
     res.status(500).json({ error: 'Error fetching vCard' });
+  }
+};
+exports.submitForm = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const { name, email, phone, message } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !message) {
+      return res.status(400).json({ error: 'Name, email, and message are required fields' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Create new form submission
+    const formSubmission = new FormSubmission({
+      vCardId,
+      submitterName: name,
+      submitterEmail: email,
+      submitterPhone: phone,
+      message
+    });
+
+    await formSubmission.save();
+
+    res.status(201).json({
+      message: 'Form submitted successfully',
+      submissionId: formSubmission._id
+    });
+  } catch (error) {
+    console.error('Error submitting form:', error);
+    res.status(500).json({ error: 'Error submitting form', details: error.message });
+  }
+};
+exports.getFormSubmissions = async (req, res) => {
+  try {
+    const { vCardId } = req.params;
+    const { userId } = req.user;
+
+    // Verify that the vCard belongs to the user
+    const user = await User.findOne({ _id: userId, 'vCards._id': vCardId });
+    if (!user) {
+      return res.status(404).json({ error: 'vCard not found or does not belong to the user' });
+    }
+
+    const submissions = await FormSubmission.find({ vCardId })
+      .sort({ submittedAt: -1 }); // Most recent first
+
+    res.json({
+      total: submissions.length,
+      submissions
+    });
+  } catch (error) {
+    console.error('Error fetching form submissions:', error);
+    res.status(500).json({ error: 'Error fetching form submissions', details: error.message });
   }
 };
 

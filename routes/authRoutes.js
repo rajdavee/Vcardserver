@@ -29,7 +29,10 @@ const {
   recordTimeSpent,
   deleteVCard,
   testLocationSpecificService,
-  testUserIpDetection
+  testUserIpDetection,
+  submitForm,
+  getFormSubmissions,
+
 } = require('../controllers/authController');
 const authenticateJWT = require('../middleware/authMiddleware');
 
@@ -75,4 +78,8 @@ router.get('/vcard-analytics/:vCardId', authenticateJWT, analyticsController.get
 router.get('/test-location-service', testLocationSpecificService);
 
 router.get('/test-user-ip', testUserIpDetection);
+
+router.post('/vcard/:vCardId/submit-form', submitForm);
+router.get('/vcard/:vCardId/form-submissions', authenticateJWT, getFormSubmissions);
+
 module.exports = router;
