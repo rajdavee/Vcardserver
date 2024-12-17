@@ -49,9 +49,24 @@ const uploadImage = async (file) => {
 };
 
 async function generateQRCode(vCardData) {
-  const vCardString = generateVCardString(vCardData);
-  const qrCodeDataUrl = await QRCode.toDataURL(`${process.env.FRONTEND_URL}/add-contact?vCardData=${encodeURIComponent(vCardString)}`);
-  return { qrCodeDataUrl, vCardString };
+  try {
+    // Generate vCard string first
+    const vCardString = generateVCardString(vCardData);
+    
+    // Generate QR code with the vCard data directly
+    // This will make the QR code contain the vCard data instead of a URL
+    const qrCodeDataUrl = await QRCode.toDataURL(vCardString, {
+      errorCorrectionLevel: 'M',
+      type: 'image/png',
+      quality: 0.92,
+      margin: 1
+    });
+
+    return { qrCodeDataUrl, vCardString };
+  } catch (error) {
+    console.error('Error generating QR code:', error);
+    throw error;
+  }
 }
 async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
   try {
@@ -69,19 +84,41 @@ function generateVCardString(vCardData) {
   let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
   const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
 
-  // Name
+  // Name handling
   const fullName = fieldMap.get('name') || `${fieldMap.get('firstName') || ''} ${fieldMap.get('lastName') || ''}`.trim();
   vCard += `FN:${fullName}\n`;
-  vCard += `N:${fullName.split(' ').reverse().join(';')};;;\n`;
+  
+  // Split name into components
+  const nameParts = fullName.split(' ');
+  const lastName = nameParts.pop() || '';
+  const firstName = nameParts.join(' ') || '';
+  vCard += `N:${lastName};${firstName};;;\n`;
 
+  // Contact details
   if (fieldMap.has('phone')) vCard += `TEL;TYPE=CELL:${fieldMap.get('phone')}\n`;
-  if (fieldMap.has('email')) vCard += `EMAIL:${fieldMap.get('email')}\n`;
+  if (fieldMap.has('email')) vCard += `EMAIL;TYPE=INTERNET:${fieldMap.get('email')}\n`;
   if (fieldMap.has('website')) vCard += `URL:${fieldMap.get('website')}\n`;
+  
+  // Professional details
   if (fieldMap.has('jobTitle')) vCard += `TITLE:${fieldMap.get('jobTitle')}\n`;
   if (fieldMap.has('company')) vCard += `ORG:${fieldMap.get('company')}\n`;
 
-  const address = [fieldMap.get('address'), fieldMap.get('city'), fieldMap.get('postalCode')].filter(Boolean).join(', ');
-  if (address) vCard += `ADR:;;${address};;;;\n`;
+  // Address
+  const addressParts = [];
+  if (fieldMap.has('address')) addressParts.push(fieldMap.get('address'));
+  if (fieldMap.has('city')) addressParts.push(fieldMap.get('city'));
+  if (fieldMap.has('state')) addressParts.push(fieldMap.get('state'));
+  if (fieldMap.has('postalCode')) addressParts.push(fieldMap.get('postalCode'));
+  if (fieldMap.has('country')) addressParts.push(fieldMap.get('country'));
+  
+  if (addressParts.length > 0) {
+    vCard += `ADR;TYPE=WORK:;;${addressParts.join(', ')};;;;\n`;
+  }
+
+  // Profile image
+  if (fieldMap.has('profileImage')) {
+    vCard += `PHOTO;VALUE=URL:${fieldMap.get('profileImage')}\n`;
+  }
 
   vCard += `END:VCARD`;
   return vCard;
