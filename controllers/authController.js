@@ -50,19 +50,85 @@ const uploadImage = async (file) => {
 
 async function generateQRCode(vCardData) {
   try {
-    // Generate vCard string first
-    const vCardString = generateVCardString(vCardData);
+    const getField = (fieldName) => {
+      const field = vCardData.fields.find(f => f.name === fieldName);
+      return field ? field.value.toString().trim() : '';
+    };
+
+    // Ensure proper encoding of special characters
+    const encodeField = (value) => {
+      if (!value) return '';
+      return value
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\n/g, '\\n');
+    };
+
+    // Debug log to check fields
+    console.log('Incoming vCard fields:', vCardData.fields);
+
+    // Build name components
+    const firstName = getField('firstName');
+    const lastName = getField('lastName');
+    const fullName = getField('name') || `${firstName} ${lastName}`.trim();
+    const company = getField('companyName') || getField('company'); // Try both field names
+
+    const vCardLines = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      // Name fields - properly encoded
+      `FN:${encodeField(fullName)}`,
+      `N:${encodeField(lastName)};${encodeField(firstName)};;;`,
+      
+      // Organization and title - ensure company name is included
+      company ? `ORG:${encodeField(company)}` : '',
+      getField('jobTitle') ? `TITLE:${encodeField(getField('jobTitle'))}` : '',
+      
+      // Contact numbers - ensure proper formatting
+      getField('phone') ? `TEL;TYPE=WORK,VOICE:${getField('phone').replace(/[^+0-9]/g, '')}` : '',
+      getField('mobile') ? `TEL;TYPE=CELL,VOICE:${getField('mobile').replace(/[^+0-9]/g, '')}` : '',
+      
+      // Email and website - ensure website is included
+      getField('email') ? `EMAIL;TYPE=WORK,INTERNET:${encodeField(getField('email'))}` : '',
+      getField('website') ? `URL:${encodeField(getField('website'))}` : '',
+      
+      // Full address with all components
+      (getField('address') || getField('city') || getField('state') || getField('country')) ? 
+        `ADR;TYPE=WORK:;;${[
+          encodeField(getField('address')),
+          encodeField(getField('city')),
+          encodeField(getField('state')),
+          encodeField(getField('postalCode')),
+          encodeField(getField('country'))
+        ].join(';')}` : '',
+      
+      // Social profiles
+      getField('linkedin') ? `X-SOCIALPROFILE;TYPE=linkedin:${encodeField(getField('linkedin'))}` : '',
+      getField('twitter') ? `X-SOCIALPROFILE;TYPE=twitter:${encodeField(getField('twitter'))}` : '',
+      
+      // Notes
+      getField('note') ? `NOTE:${encodeField(getField('note'))}` : '',
+      'END:VCARD'
+    ].filter(line => line);
+
+    const vCard = vCardLines.join('\r\n');
     
-    // Generate QR code with the vCard data directly
-    // This will make the QR code contain the vCard data instead of a URL
-    const qrCodeDataUrl = await QRCode.toDataURL(vCardString, {
-      errorCorrectionLevel: 'M',
+    // Debug log to check final vCard string
+    console.log('Generated vCard string:', vCard);
+
+    const qrCodeDataUrl = await QRCode.toDataURL(vCard, {
+      errorCorrectionLevel: 'Q',
       type: 'image/png',
-      quality: 0.92,
-      margin: 1
+      quality: 1.0,
+      margin: 4,
+      width: 1024,
+      rendererOpts: {
+        quality: 1.0
+      }
     });
 
-    return { qrCodeDataUrl, vCardString };
+    return { qrCodeDataUrl, vCardString: vCard };
   } catch (error) {
     console.error('Error generating QR code:', error);
     throw error;
@@ -81,28 +147,40 @@ async function generateAndSaveQRCode(vCardId, user, vCardIndex) {
   }
 }
 function generateVCardString(vCardData) {
-  let vCard = `BEGIN:VCARD\nVERSION:3.0\n`;
   const fieldMap = new Map(vCardData.fields.map(f => [f.name, f.value]));
-
-  // Name handling
+  
+  // Build MECARD format string (more compatible with mobile devices)
+  let mecard = [];
+  
+  // Name (required)
   const fullName = fieldMap.get('name') || `${fieldMap.get('firstName') || ''} ${fieldMap.get('lastName') || ''}`.trim();
-  vCard += `FN:${fullName}\n`;
+  mecard.push(`N:${fullName}`);
   
-  // Split name into components
-  const nameParts = fullName.split(' ');
-  const lastName = nameParts.pop() || '';
-  const firstName = nameParts.join(' ') || '';
-  vCard += `N:${lastName};${firstName};;;\n`;
-
-  // Contact details
-  if (fieldMap.has('phone')) vCard += `TEL;TYPE=CELL:${fieldMap.get('phone')}\n`;
-  if (fieldMap.has('email')) vCard += `EMAIL;TYPE=INTERNET:${fieldMap.get('email')}\n`;
-  if (fieldMap.has('website')) vCard += `URL:${fieldMap.get('website')}\n`;
+  // Phone
+  if (fieldMap.has('phone')) {
+    mecard.push(`TEL:${fieldMap.get('phone')}`);
+  }
   
-  // Professional details
-  if (fieldMap.has('jobTitle')) vCard += `TITLE:${fieldMap.get('jobTitle')}\n`;
-  if (fieldMap.has('company')) vCard += `ORG:${fieldMap.get('company')}\n`;
-
+  // Email
+  if (fieldMap.has('email')) {
+    mecard.push(`EMAIL:${fieldMap.get('email')}`);
+  }
+  
+  // Website
+  if (fieldMap.has('website')) {
+    mecard.push(`URL:${fieldMap.get('website')}`);
+  }
+  
+  // Company
+  if (fieldMap.has('company')) {
+    mecard.push(`ORG:${fieldMap.get('company')}`);
+  }
+  
+  // Job Title
+  if (fieldMap.has('jobTitle')) {
+    mecard.push(`TITLE:${fieldMap.get('jobTitle')}`);
+  }
+  
   // Address
   const addressParts = [];
   if (fieldMap.has('address')) addressParts.push(fieldMap.get('address'));
@@ -112,16 +190,16 @@ function generateVCardString(vCardData) {
   if (fieldMap.has('country')) addressParts.push(fieldMap.get('country'));
   
   if (addressParts.length > 0) {
-    vCard += `ADR;TYPE=WORK:;;${addressParts.join(', ')};;;;\n`;
+    mecard.push(`ADR:${addressParts.join(',')}`);
   }
-
-  // Profile image
-  if (fieldMap.has('profileImage')) {
-    vCard += `PHOTO;VALUE=URL:${fieldMap.get('profileImage')}\n`;
+  
+  // Note (can include additional information)
+  if (fieldMap.has('note')) {
+    mecard.push(`NOTE:${fieldMap.get('note')}`);
   }
-
-  vCard += `END:VCARD`;
-  return vCard;
+  
+  // Join all fields with semicolons
+  return mecard.join(';');
 }
 // ----------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------
